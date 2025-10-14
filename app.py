@@ -215,35 +215,42 @@ def dashboard():
                 margin: 0 auto;
             }
             
-            .header {
+            .time-header {
                 text-align: center;
                 margin-bottom: 15px;
+            }
+            
+            .current-time {
+                font-size: 1.2em;
+                color: #ffaaaa;
                 background: rgba(139, 0, 0, 0.3);
-                padding: 15px;
-                border-radius: 10px;
-                border: 2px solid #8b0000;
+                padding: 10px 15px;
+                border-radius: 8px;
+                border: 1px solid #8b0000;
+                display: inline-block;
+                font-weight: bold;
+            }
+            
+            .header {
+                text-align: center;
+                margin-top: 15px;
+                background: rgba(139, 0, 0, 0.2);
+                padding: 10px;
+                border-radius: 8px;
+                border: 1px solid #8b0000;
             }
             
             .header h1 {
-                font-size: 1.8em;
+                font-size: 1.2em;
                 color: #ff4444;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-                margin-bottom: 8px;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+                margin-bottom: 5px;
             }
             
             .header h2 {
                 color: #ff6666;
-                margin-bottom: 8px;
-                font-size: 1.1em;
-            }
-            
-            .current-time {
-                font-size: 1em;
-                color: #ffaaaa;
-                background: rgba(139, 0, 0, 0.2);
-                padding: 8px;
-                border-radius: 8px;
-                display: inline-block;
+                margin-bottom: 0;
+                font-size: 0.9em;
             }
             
             .stats-grid {
@@ -415,9 +422,7 @@ def dashboard():
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <h1>🎮 Twitch Viewer Tracker</h1>
-                <h2>Canal: Blackcraneo</h2>
+            <div class="time-header">
                 <div class="current-time" id="current-time"></div>
             </div>
             
@@ -449,6 +454,11 @@ def dashboard():
                         <div class="empty-message">Historial vacío</div>
                     </div>
                 </div>
+            </div>
+            
+            <div class="header">
+                <h1>🎮 Twitch Viewer Tracker</h1>
+                <h2>Canal: Blackcraneo</h2>
             </div>
         </div>
         
