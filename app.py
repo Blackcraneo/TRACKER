@@ -52,6 +52,49 @@ class TwitchTracker(commands.Bot):
         print(f'✅ Conectado a Twitch como {self.nick}')
         print(f'📺 Rastreando canal: {self.channel_name}')
         print(f'🕐 Hora local Santiago: {get_santiago_time()}')
+        
+        # Obtener usuarios que ya están en el chat
+        await self.load_existing_users()
+    
+    async def load_existing_users(self):
+        """Carga usuarios que ya están en el chat cuando se conecta el bot"""
+        try:
+            # Obtener la lista de usuarios del canal
+            channel = self.get_channel(self.channel_name)
+            if channel:
+                users = await channel.chatters()
+                
+                join_time = get_santiago_time()
+                users_loaded = 0
+                
+                for user in users:
+                    # Excluir bots
+                    if user.name.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
+                        continue
+                    
+                    # Agregar usuario existente
+                    user_data = {
+                        'username': user.name,
+                        'join_time': f"{join_time} (ya estaba)",
+                        'leave_time': None,
+                        'duration': None,
+                        'status': 'viendo'
+                    }
+                    
+                    current_viewers[user.name] = user_data
+                    users_loaded += 1
+                    
+                    # Agregar al historial como usuario existente
+                    history_entry = {
+                        **user_data,
+                        'action': 'ya estaba'
+                    }
+                    all_history.append(history_entry)
+                
+                print(f'📋 Cargados {users_loaded} usuarios que ya estaban en el chat')
+                
+        except Exception as e:
+            print(f'⚠️ Error cargando usuarios existentes: {e}')
     
     async def event_join(self, channel, user):
         # Excluir bots de la lista
@@ -164,143 +207,136 @@ def dashboard():
                 background: linear-gradient(135deg, #1a1a1a 0%, #2d1b1b 50%, #1a1a1a 100%);
                 color: #ffffff;
                 min-height: 100vh;
-                padding: 20px;
+                padding: 10px;
             }
             
             .container {
-                max-width: 1400px;
+                max-width: 400px;
                 margin: 0 auto;
             }
             
             .header {
                 text-align: center;
-                margin-bottom: 30px;
+                margin-bottom: 15px;
                 background: rgba(139, 0, 0, 0.3);
-                padding: 20px;
-                border-radius: 15px;
+                padding: 15px;
+                border-radius: 10px;
                 border: 2px solid #8b0000;
             }
             
             .header h1 {
-                font-size: 2.5em;
+                font-size: 1.8em;
                 color: #ff4444;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-                margin-bottom: 10px;
+                margin-bottom: 8px;
             }
             
             .header h2 {
                 color: #ff6666;
-                margin-bottom: 10px;
+                margin-bottom: 8px;
+                font-size: 1.1em;
             }
             
             .current-time {
-                font-size: 1.2em;
+                font-size: 1em;
                 color: #ffaaaa;
                 background: rgba(139, 0, 0, 0.2);
-                padding: 10px;
-                border-radius: 10px;
+                padding: 8px;
+                border-radius: 8px;
                 display: inline-block;
             }
             
             .stats-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 20px;
-                margin-bottom: 30px;
+                display: flex;
+                justify-content: center;
+                margin-bottom: 20px;
             }
             
             .stat-card {
                 background: linear-gradient(145deg, #2a1a1a, #1a1a1a);
-                padding: 25px;
-                border-radius: 15px;
+                padding: 15px 25px;
+                border-radius: 10px;
                 text-align: center;
                 border: 2px solid #8b0000;
-                box-shadow: 0 8px 25px rgba(139, 0, 0, 0.3);
-                transition: transform 0.3s ease;
-            }
-            
-            .stat-card:hover {
-                transform: translateY(-5px);
-                box-shadow: 0 12px 35px rgba(139, 0, 0, 0.4);
+                box-shadow: 0 4px 15px rgba(139, 0, 0, 0.3);
             }
             
             .stat-number {
-                font-size: 3em;
+                font-size: 2.5em;
                 font-weight: bold;
                 color: #ff4444;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-                margin-bottom: 10px;
+                margin-bottom: 5px;
             }
             
             .stat-label {
                 color: #ffaaaa;
-                font-size: 1.1em;
+                font-size: 1em;
                 font-weight: 600;
             }
             
             .panels-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                gap: 25px;
-                margin-bottom: 30px;
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+                margin-bottom: 20px;
             }
             
             .panel {
                 background: linear-gradient(145deg, #2a1a1a, #1a1a1a);
-                border-radius: 15px;
+                border-radius: 10px;
                 border: 2px solid #8b0000;
                 overflow: hidden;
-                box-shadow: 0 8px 25px rgba(139, 0, 0, 0.3);
+                box-shadow: 0 4px 15px rgba(139, 0, 0, 0.3);
             }
             
             .panel-header {
                 background: linear-gradient(90deg, #8b0000, #cc0000);
-                padding: 15px 20px;
+                padding: 10px 15px;
                 text-align: center;
-                font-size: 1.3em;
+                font-size: 1.1em;
                 font-weight: bold;
                 color: white;
                 text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
             }
             
             .panel-content {
-                max-height: 400px;
+                max-height: 200px;
                 overflow-y: auto;
-                padding: 15px;
+                padding: 10px;
             }
             
             .user-item {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 12px;
-                margin: 8px 0;
+                padding: 8px 12px;
+                margin: 4px 0;
                 background: rgba(139, 0, 0, 0.1);
-                border-radius: 10px;
-                border-left: 4px solid #ff4444;
-                transition: all 0.3s ease;
+                border-radius: 8px;
+                border-left: 3px solid #ff4444;
+                transition: all 0.2s ease;
             }
             
             .user-item:hover {
                 background: rgba(139, 0, 0, 0.2);
-                transform: translateX(5px);
             }
             
             .user-name {
                 font-weight: bold;
                 color: #ff6666;
-                font-size: 1.1em;
+                font-size: 1em;
             }
             
             .user-time {
                 color: #ffaaaa;
-                font-size: 0.9em;
+                font-size: 0.8em;
             }
             
             .user-duration {
                 color: #ff8888;
                 font-weight: 600;
-                font-size: 0.9em;
+                font-size: 0.8em;
             }
             
             .status-viendo {
@@ -313,6 +349,10 @@ def dashboard():
             
             .status-entró {
                 border-left-color: #0088ff;
+            }
+            
+            .status-ya-estaba {
+                border-left-color: #8888ff;
             }
             
             .empty-message {
@@ -386,18 +426,6 @@ def dashboard():
                     <div class="stat-number" id="espectadores">0</div>
                     <div class="stat-label">Espectadores</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="viendo">0</div>
-                    <div class="stat-label">Viendo Ahora</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="salieron">0</div>
-                    <div class="stat-label">Salieron</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number" id="total-historial">0</div>
-                    <div class="stat-label">Total Historial</div>
-                </div>
             </div>
             
             <div class="panels-grid">
@@ -444,9 +472,6 @@ def dashboard():
                     .then(response => response.json())
                     .then(data => {
                         document.getElementById('espectadores').textContent = data.espectadores;
-                        document.getElementById('viendo').textContent = data.viendo;
-                        document.getElementById('salieron').textContent = data.salieron;
-                        document.getElementById('total-historial').textContent = data.total_historial;
                     });
             }
             
@@ -529,6 +554,9 @@ def dashboard():
                             } else if (entry.action === 'salió') {
                                 actionText = `Salió: ${entry.leave_time}`;
                                 icon = '🔴';
+                            } else if (entry.action === 'ya estaba') {
+                                actionText = `Ya estaba: ${entry.join_time}`;
+                                icon = '🔵';
                             }
                             
                             item.innerHTML = `
