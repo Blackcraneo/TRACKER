@@ -25,6 +25,19 @@ current_viewers: Dict[str, Dict] = {}  # Usuarios actualmente viendo
 left_viewers: List[Dict] = []  # Usuarios que salieron
 all_history: List[Dict] = []  # Historial completo
 
+# Lista de bots a excluir (agrega aquí los nombres de tus bots)
+EXCLUDED_BOTS = [
+    'blackcraneo',  # El bot principal
+    'streamelements',  # StreamElements
+    'streamlabs',  # StreamLabs
+    'nightbot',  # Nightbot
+    'moobot',  # Moobot
+    'fossabot',  # Fossabot
+    'wizebot',  # Wizebot
+    'deepbot',  # Deepbot
+    # Agrega aquí los nombres de tus bots personalizados
+]
+
 class TwitchTracker(commands.Bot):
     def __init__(self):
         super().__init__(
@@ -40,7 +53,9 @@ class TwitchTracker(commands.Bot):
         print(f'🕐 Hora local Santiago: {get_santiago_time()}')
     
     async def event_join(self, channel, user):
-        if user.name.lower() == self.nick.lower():
+        # Excluir bots de la lista
+        if user.name.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
+            print(f'🤖 Bot excluido: {user.name}')
             return
         
         join_time = get_santiago_time()
@@ -67,7 +82,9 @@ class TwitchTracker(commands.Bot):
         print(f'👋 {user.name} entró al stream a las {join_time}')
     
     async def event_part(self, channel, user):
-        if user.name.lower() == self.nick.lower():
+        # Excluir bots de la lista
+        if user.name.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
+            print(f'🤖 Bot excluido: {user.name}')
             return
         
         leave_time = get_santiago_time()
