@@ -277,121 +277,121 @@ def dashboard():
                 background: linear-gradient(135deg, #1a1a1a 0%, #2d1b1b 50%, #1a1a1a 100%);
                 color: #ffffff;
                 min-height: 100vh;
-                padding: 10px;
+                padding: 5px;
             }
             
-             .container {
-                 max-width: 350px;
-                 margin: 0 auto;
-             }
+            .container {
+                max-width: 280px;
+                margin: 0 auto;
+            }
             
             .time-header {
                 text-align: center;
-                margin-bottom: 8px;
+                margin-bottom: 5px;
             }
             
             .current-time {
-                font-size: 1em;
+                font-size: 0.8em;
                 color: #ffaaaa;
-                background: rgba(139, 0, 0, 0.3);
-                padding: 6px 12px;
-                border-radius: 6px;
+                background: rgba(139, 0, 0, 0.2);
+                padding: 3px 8px;
+                border-radius: 4px;
                 border: 1px solid #8b0000;
                 display: inline-block;
-                font-weight: bold;
+                font-weight: 500;
             }
             
             .header {
                 text-align: center;
-                margin-top: 8px;
+                margin-top: 5px;
                 background: rgba(139, 0, 0, 0.2);
-                padding: 6px;
-                border-radius: 6px;
+                padding: 4px;
+                border-radius: 4px;
                 border: 1px solid #8b0000;
             }
             
             .header h1 {
-                font-size: 1em;
+                font-size: 0.85em;
                 color: #ff4444;
                 text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
-                margin-bottom: 3px;
+                margin-bottom: 2px;
             }
             
             .header h2 {
                 color: #ff6666;
                 margin-bottom: 0;
-                font-size: 0.8em;
+                font-size: 0.7em;
             }
             
             .stats-grid {
                 display: flex;
                 justify-content: center;
-                margin-bottom: 12px;
+                margin-bottom: 6px;
             }
             
             .stat-card {
                 background: linear-gradient(145deg, #2a1a1a, #1a1a1a);
-                padding: 10px 20px;
-                border-radius: 8px;
+                padding: 6px 12px;
+                border-radius: 6px;
                 text-align: center;
-                border: 2px solid #8b0000;
-                box-shadow: 0 4px 15px rgba(139, 0, 0, 0.3);
+                border: 1px solid #8b0000;
+                box-shadow: 0 2px 8px rgba(139, 0, 0, 0.2);
             }
             
             .stat-number {
-                font-size: 2em;
+                font-size: 1.4em;
                 font-weight: bold;
                 color: #ff4444;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-                margin-bottom: 3px;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+                margin-bottom: 1px;
             }
             
             .stat-label {
                 color: #ffaaaa;
-                font-size: 0.9em;
-                font-weight: 600;
+                font-size: 0.75em;
+                font-weight: 500;
             }
             
             .panels-grid {
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
-                margin-bottom: 15px;
+                gap: 4px;
+                margin-bottom: 8px;
             }
             
             .panel {
                 background: linear-gradient(145deg, #2a1a1a, #1a1a1a);
-                border-radius: 8px;
-                border: 2px solid #8b0000;
+                border-radius: 5px;
+                border: 1px solid #8b0000;
                 overflow: hidden;
-                box-shadow: 0 4px 15px rgba(139, 0, 0, 0.3);
+                box-shadow: 0 2px 6px rgba(139, 0, 0, 0.2);
             }
             
             .panel-header {
                 background: linear-gradient(90deg, #8b0000, #cc0000);
-                padding: 6px 12px;
+                padding: 3px 8px;
                 text-align: center;
-                font-size: 0.95em;
+                font-size: 0.8em;
                 font-weight: bold;
                 color: white;
                 text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
             }
             
             .panel-content {
-                max-height: 120px;
+                max-height: 80px;
                 overflow-y: auto;
-                padding: 6px;
+                padding: 4px;
             }
             
             .user-item {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 4px 8px;
-                margin: 2px 0;
+                padding: 2px 6px;
+                margin: 1px 0;
                 background: rgba(139, 0, 0, 0.1);
-                border-radius: 6px;
-                border-left: 3px solid #ff4444;
+                border-radius: 4px;
+                border-left: 2px solid #ff4444;
                 transition: all 0.2s ease;
             }
             
@@ -402,18 +402,18 @@ def dashboard():
             .user-name {
                 font-weight: bold;
                 color: #ff6666;
-                font-size: 0.85em;
+                font-size: 0.75em;
             }
             
             .user-time {
                 color: #ffaaaa;
-                font-size: 0.7em;
+                font-size: 0.6em;
             }
             
             .user-duration {
                 color: #ff8888;
                 font-weight: 600;
-                font-size: 0.7em;
+                font-size: 0.6em;
             }
             
             .status-viendo {
@@ -452,11 +452,11 @@ def dashboard():
                 text-align: center;
                 color: #ffaaaa;
                 font-style: italic;
-                padding: 8px;
+                padding: 4px;
                 background: rgba(139, 0, 0, 0.1);
-                border-radius: 6px;
+                border-radius: 4px;
                 border: 1px dashed #8b0000;
-                font-size: 0.8em;
+                font-size: 0.7em;
             }
             
             .scrollbar-custom {
