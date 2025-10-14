@@ -280,22 +280,22 @@ def dashboard():
                 padding: 10px;
             }
             
-            .container {
-                max-width: 400px;
-                margin: 0 auto;
-            }
+             .container {
+                 max-width: 350px;
+                 margin: 0 auto;
+             }
             
             .time-header {
                 text-align: center;
-                margin-bottom: 15px;
+                margin-bottom: 8px;
             }
             
             .current-time {
-                font-size: 1.2em;
+                font-size: 1em;
                 color: #ffaaaa;
                 background: rgba(139, 0, 0, 0.3);
-                padding: 10px 15px;
-                border-radius: 8px;
+                padding: 6px 12px;
+                border-radius: 6px;
                 border: 1px solid #8b0000;
                 display: inline-block;
                 font-weight: bold;
@@ -303,65 +303,65 @@ def dashboard():
             
             .header {
                 text-align: center;
-                margin-top: 15px;
+                margin-top: 8px;
                 background: rgba(139, 0, 0, 0.2);
-                padding: 10px;
-                border-radius: 8px;
+                padding: 6px;
+                border-radius: 6px;
                 border: 1px solid #8b0000;
             }
             
             .header h1 {
-                font-size: 1.2em;
+                font-size: 1em;
                 color: #ff4444;
                 text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
-                margin-bottom: 5px;
+                margin-bottom: 3px;
             }
             
             .header h2 {
                 color: #ff6666;
                 margin-bottom: 0;
-                font-size: 0.9em;
+                font-size: 0.8em;
             }
             
             .stats-grid {
                 display: flex;
                 justify-content: center;
-                margin-bottom: 20px;
+                margin-bottom: 12px;
             }
             
             .stat-card {
                 background: linear-gradient(145deg, #2a1a1a, #1a1a1a);
-                padding: 15px 25px;
-                border-radius: 10px;
+                padding: 10px 20px;
+                border-radius: 8px;
                 text-align: center;
                 border: 2px solid #8b0000;
                 box-shadow: 0 4px 15px rgba(139, 0, 0, 0.3);
             }
             
             .stat-number {
-                font-size: 2.5em;
+                font-size: 2em;
                 font-weight: bold;
                 color: #ff4444;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-                margin-bottom: 5px;
+                margin-bottom: 3px;
             }
             
             .stat-label {
                 color: #ffaaaa;
-                font-size: 1em;
+                font-size: 0.9em;
                 font-weight: 600;
             }
             
             .panels-grid {
                 display: flex;
                 flex-direction: column;
-                gap: 15px;
-                margin-bottom: 20px;
+                gap: 8px;
+                margin-bottom: 15px;
             }
             
             .panel {
                 background: linear-gradient(145deg, #2a1a1a, #1a1a1a);
-                border-radius: 10px;
+                border-radius: 8px;
                 border: 2px solid #8b0000;
                 overflow: hidden;
                 box-shadow: 0 4px 15px rgba(139, 0, 0, 0.3);
@@ -369,28 +369,28 @@ def dashboard():
             
             .panel-header {
                 background: linear-gradient(90deg, #8b0000, #cc0000);
-                padding: 10px 15px;
+                padding: 6px 12px;
                 text-align: center;
-                font-size: 1.1em;
+                font-size: 0.95em;
                 font-weight: bold;
                 color: white;
                 text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
             }
             
             .panel-content {
-                max-height: 200px;
+                max-height: 120px;
                 overflow-y: auto;
-                padding: 10px;
+                padding: 6px;
             }
             
             .user-item {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 8px 12px;
-                margin: 4px 0;
+                padding: 4px 8px;
+                margin: 2px 0;
                 background: rgba(139, 0, 0, 0.1);
-                border-radius: 8px;
+                border-radius: 6px;
                 border-left: 3px solid #ff4444;
                 transition: all 0.2s ease;
             }
@@ -402,18 +402,18 @@ def dashboard():
             .user-name {
                 font-weight: bold;
                 color: #ff6666;
-                font-size: 1em;
+                font-size: 0.85em;
             }
             
             .user-time {
                 color: #ffaaaa;
-                font-size: 0.8em;
+                font-size: 0.7em;
             }
             
             .user-duration {
                 color: #ff8888;
                 font-weight: 600;
-                font-size: 0.8em;
+                font-size: 0.7em;
             }
             
             .status-viendo {
@@ -452,10 +452,11 @@ def dashboard():
                 text-align: center;
                 color: #ffaaaa;
                 font-style: italic;
-                padding: 20px;
+                padding: 8px;
                 background: rgba(139, 0, 0, 0.1);
-                border-radius: 10px;
+                border-radius: 6px;
                 border: 1px dashed #8b0000;
+                font-size: 0.8em;
             }
             
             .scrollbar-custom {
