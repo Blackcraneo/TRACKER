@@ -6,8 +6,9 @@ from typing import Dict, List
 import pytz
 from flask import Flask, jsonify, render_template_string
 from flask_cors import CORS
-import twitchio
-from twitchio.ext import commands
+import requests
+import threading
+import time
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
@@ -39,355 +40,201 @@ EXCLUDED_BOTS = [
     # Agrega aquí los nombres de tus bots personalizados
 ]
 
-class TwitchTracker(commands.Bot):
+class TwitchTracker:
     def __init__(self):
-        super().__init__(
-            token=os.getenv('TWITCH_OAUTH', '5q6yqt6xcelt56pp8ng5h822walu57'),
-            prefix='!',
-            initial_channels=['blackcraneo']
-        )
+        self.token = os.getenv('TWITCH_OAUTH', 'mxxlbxvd0u7j6lqyz5502nmi0hfzd6')
+        self.client_id = 'kce866utqoafieyfeto8ef3z30ries'  # Tu Client ID
         self.channel_name = 'blackcraneo'
-    
-    async def event_ready(self):
-        print(f'✅ Conectado a Twitch como {self.nick}')
-        print(f'📺 Rastreando canal: {self.channel_name}')
-        print(f'🕐 Hora local Santiago: {get_santiago_time()}')
+        self.channel_id = None
+        self.headers = {
+            'Authorization': f'Bearer {self.token}',
+            'Client-Id': self.client_id
+        }
+        self.running = False
         
-        # Obtener usuarios que ya están en el chat
-        await self.load_existing_users()
+    def start(self):
+        """Inicia el tracker"""
+        print(f'Iniciando Twitch Tracker...')
+        print(f'Canal: {self.channel_name}')
+        print(f'Token configurado: {bool(self.token)}')
+        print(f'Client ID: {self.client_id}')
         
-        # Iniciar verificación periódica en segundo plano
-        asyncio.create_task(self.periodic_user_check())
+        self.running = True
         
-        # Iniciar verificación de usuarios activos cada 10 segundos
-        asyncio.create_task(self.active_user_check())
-    
-    async def load_existing_users(self):
-        """Carga usuarios que ya están en el chat cuando se conecta el bot"""
-        try:
-            # Esperar un poco para que la conexión se estabilice
-            await asyncio.sleep(2)
+        # Obtener ID del canal
+        if self.get_channel_id():
+            print(f'Canal encontrado. ID: {self.channel_id}')
             
-            # Obtener la lista de usuarios del canal
-            channel = self.get_channel(self.channel_name)
-            if channel:
-                print(f'🔍 Obteniendo usuarios del canal: {self.channel_name}')
+            # Cargar usuarios iniciales
+            self.load_existing_users()
+            
+            # Iniciar monitoreo
+            threading.Thread(target=self.monitor_loop, daemon=True).start()
+            print(f'Twitch Tracker iniciado correctamente')
+        else:
+            print(f'Error: No se pudo obtener el ID del canal')
+            self.running = False
+    
+    def get_channel_id(self):
+        """Obtiene el ID del canal usando la API de Twitch"""
+        try:
+            url = f'https://api.twitch.tv/helix/users?login={self.channel_name}'
+            response = requests.get(url, headers=self.headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data['data']:
+                    self.channel_id = data['data'][0]['id']
+                    return True
+            else:
+                print(f'Error obteniendo canal: {response.status_code} - {response.text}')
                 
-                try:
-                    # Intentar obtener usuarios con diferentes métodos
-                    users = await channel.chatters()
-                    print(f'📊 Usuarios obtenidos del canal: {len(users) if users else 0}')
+        except Exception as e:
+            print(f'Error en get_channel_id: {e}')
+        
+        return False
+    
+    def get_chatters(self):
+        """Obtiene la lista de chatters del canal"""
+        try:
+            url = f'https://api.twitch.tv/helix/chat/chatters?broadcaster_id={self.channel_id}&moderator_id={self.channel_id}'
+            response = requests.get(url, headers=self.headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return [user['user_name'] for user in data.get('data', [])]
+            else:
+                print(f'Error obteniendo chatters: {response.status_code}')
+                
+        except Exception as e:
+            print(f'Error en get_chatters: {e}')
+        
+        return []
+    
+    def load_existing_users(self):
+        """Carga usuarios que ya están en el chat cuando se conecta el bot"""
+        print(f'Cargando usuarios existentes del canal: {self.channel_name}')
+        
+        try:
+            chatters = self.get_chatters()
+            print(f'Chatters obtenidos: {len(chatters)}')
+            
+            if chatters:
+                join_time = get_santiago_time()
+                users_loaded = 0
+                
+                for username in chatters:
+                    # Excluir bots
+                    if username.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
+                        print(f'Bot excluido: {username}')
+                        continue
                     
-                    join_time = get_santiago_time()
-                    users_loaded = 0
+                    # Agregar usuario existente
+                    user_data = {
+                        'username': username,
+                        'join_time': f"{join_time} (ya estaba)",
+                        'leave_time': None,
+                        'duration': None,
+                        'status': 'viendo'
+                    }
                     
-                    if users:
-                        for user in users:
-                            username = user.name if hasattr(user, 'name') else str(user)
+                    current_viewers[username] = user_data
+                    users_loaded += 1
+                    
+                    # Agregar al historial como usuario existente
+                    history_entry = {
+                        **user_data,
+                        'action': 'ya estaba'
+                    }
+                    all_history.append(history_entry)
+                    
+                    print(f'Usuario cargado: {username}')
+                
+                print(f'Total cargados: {users_loaded} usuarios que ya estaban en el chat')
+            else:
+                print('No se recibieron chatters del canal')
+                
+        except Exception as e:
+            print(f'Error cargando usuarios existentes: {e}')
+        
+        print(f'Estado actual: {len(current_viewers)} usuarios en la lista')
+    
+    def monitor_loop(self):
+        """Loop principal de monitoreo"""
+        print(f'Iniciando loop de monitoreo...')
+        
+        while self.running:
+            try:
+                time.sleep(10)  # Verificar cada 10 segundos
+                
+                print(f'Verificando usuarios activos...')
+                current_chatters = set(self.get_chatters())
+                
+                # Agregar nuevos usuarios
+                for username in current_chatters:
+                    if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
+                        if username not in current_viewers:
+                            join_time = get_santiago_time()
                             
-                            # Excluir bots
-                            if username.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
-                                print(f'🤖 Bot excluido: {username}')
-                                continue
-                            
-                            # Agregar usuario existente
                             user_data = {
                                 'username': username,
-                                'join_time': f"{join_time} (ya estaba)",
+                                'join_time': f"{join_time} (detectado)",
                                 'leave_time': None,
                                 'duration': None,
                                 'status': 'viendo'
                             }
                             
                             current_viewers[username] = user_data
-                            users_loaded += 1
                             
-                            # Agregar al historial como usuario existente
                             history_entry = {
                                 **user_data,
-                                'action': 'ya estaba'
+                                'action': 'detectado'
                             }
                             all_history.append(history_entry)
                             
-                            print(f'✅ Usuario cargado: {username}')
-                    
-                    print(f'📋 Total cargados: {users_loaded} usuarios que ya estaban en el chat')
-                    
-                except Exception as e:
-                    print(f'⚠️ Error obteniendo chatters: {e}')
-                    print('🔄 El sistema seguirá funcionando con detección en tiempo real')
+                            print(f'{username} detectado como nuevo usuario')
                 
-        except Exception as e:
-            print(f'⚠️ Error general cargando usuarios existentes: {e}')
-    
-    async def event_join(self, channel, user):
-        # Excluir bots de la lista
-        if user.name.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
-            print(f'🤖 Bot excluido: {user.name}')
-            return
-        
-        join_time = get_santiago_time()
-        
-        # Crear datos del usuario
-        user_data = {
-            'username': user.name,
-            'join_time': join_time,
-            'leave_time': None,
-            'duration': None,
-            'status': 'viendo'
-        }
-        
-        # Agregar a usuarios actuales
-        current_viewers[user.name] = user_data
-        
-        # Agregar al historial
-        history_entry = {
-            **user_data,
-            'action': 'entró'
-        }
-        all_history.append(history_entry)
-        
-        print(f'👋 {user.name} entró al stream a las {join_time}')
-    
-    async def event_part(self, channel, user):
-        # Excluir bots de la lista
-        if user.name.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
-            print(f'🤖 Bot excluido: {user.name}')
-            return
-        
-        leave_time = get_santiago_time()
-        
-        # Verificar si el usuario estaba en la lista
-        if user.name in current_viewers:
-            user_data = current_viewers[user.name]
-            
-            # Calcular duración
-            duration = calculate_duration(user_data['join_time'], leave_time)
-            
-            # Crear entrada de salida
-            leave_data = {
-                'username': user.name,
-                'join_time': user_data['join_time'],
-                'leave_time': leave_time,
-                'duration': duration,
-                'status': 'salió'
-            }
-            
-            # Agregar a la lista de usuarios que salieron
-            left_viewers.append(leave_data)
-            
-            # Agregar al historial
-            history_entry = {
-                **leave_data,
-                'action': 'salió'
-            }
-            all_history.append(history_entry)
-            
-            # Remover de usuarios actuales
-            del current_viewers[user.name]
-            
-            print(f'👋 {user.name} salió del stream a las {leave_time} (Estuvo: {duration})')
-    
-    async def event_message(self, message):
-        """Detecta cuando alguien envía un mensaje en el chat - MÉTODO PRINCIPAL"""
-        user = message.author
-        username = user.name
-        
-        # Excluir bots
-        if username.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
-            return
-        
-        # Si el usuario no está en la lista de viewers, agregarlo INMEDIATAMENTE
-        if username not in current_viewers:
-            join_time = get_santiago_time()
-            
-            user_data = {
-                'username': username,
-                'join_time': f"{join_time} (detectado por chat)",
-                'leave_time': None,
-                'duration': None,
-                'status': 'viendo'
-            }
-            
-            current_viewers[username] = user_data
-            
-            # Agregar al historial
-            history_entry = {
-                **user_data,
-                'action': 'detectado por chat'
-            }
-            all_history.append(history_entry)
-            
-            print(f'💬 {username} detectado por mensaje en chat a las {join_time}')
-            print(f'📊 Total usuarios actuales: {len(current_viewers)}')
-        else:
-            # Usuario ya existe, actualizar último mensaje
-            current_viewers[username]['last_activity'] = get_santiago_time()
-            print(f'💬 {username} envió mensaje (ya estaba en lista)')
-    
-    async def event_user_state(self, channel, user):
-        """Detecta cambios de estado del usuario"""
-        username = user.name
-        
-        # Excluir bots
-        if username.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
-            return
-        
-        # Si el usuario no está en la lista, agregarlo
-        if username not in current_viewers:
-            join_time = get_santiago_time()
-            
-            user_data = {
-                'username': username,
-                'join_time': f"{join_time} (detectado por estado)",
-                'leave_time': None,
-                'duration': None,
-                'status': 'viendo'
-            }
-            
-            current_viewers[username] = user_data
-            
-            # Agregar al historial
-            history_entry = {
-                **user_data,
-                'action': 'detectado por estado'
-            }
-            all_history.append(history_entry)
-            
-            print(f'👤 {username} detectado por estado a las {join_time}')
-            print(f'📊 Total usuarios actuales: {len(current_viewers)}')
-    
-    async def periodic_user_check(self):
-        """Verificación periódica de usuarios activos cada 30 segundos"""
-        while True:
-            try:
-                await asyncio.sleep(30)  # Esperar 30 segundos
+                # Detectar usuarios que salieron
+                users_to_remove = []
+                for username in current_viewers.keys():
+                    if username not in current_chatters:
+                        users_to_remove.append(username)
                 
-                # Obtener usuarios del canal periódicamente
-                channel = self.get_channel(self.channel_name)
-                if channel:
-                    try:
-                        users = await channel.chatters()
-                        if users:
-                            current_users = set(user.name if hasattr(user, 'name') else str(user) for user in users)
-                            
-                            # Agregar usuarios que no están en nuestra lista
-                            for username in current_users:
-                                if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
-                                    if username not in current_viewers:
-                                        join_time = get_santiago_time()
-                                        
-                                        user_data = {
-                                            'username': username,
-                                            'join_time': f"{join_time} (detectado periódicamente)",
-                                            'leave_time': None,
-                                            'duration': None,
-                                            'status': 'viendo'
-                                        }
-                                        
-                                        current_viewers[username] = user_data
-                                        
-                                        history_entry = {
-                                            **user_data,
-                                            'action': 'detectado periódicamente'
-                                        }
-                                        all_history.append(history_entry)
-                                        
-                                        print(f'🔄 {username} detectado en verificación periódica')
-                            
-                            # Detectar usuarios que salieron (están en nuestra lista pero no en el canal)
-                            users_to_remove = []
-                            for username in current_viewers.keys():
-                                if username not in current_users:
-                                    users_to_remove.append(username)
-                            
-                            for username in users_to_remove:
-                                if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
-                                    user_data = current_viewers[username]
-                                    leave_time = get_santiago_time()
-                                    
-                                    # Calcular duración
-                                    duration = calculate_duration(user_data['join_time'], leave_time)
-                                    
-                                    # Crear entrada de salida
-                                    leave_data = {
-                                        'username': username,
-                                        'join_time': user_data['join_time'],
-                                        'leave_time': leave_time,
-                                        'duration': duration,
-                                        'status': 'salió'
-                                    }
-                                    
-                                    # Agregar a la lista de usuarios que salieron
-                                    left_viewers.append(leave_data)
-                                    
-                                    # Agregar al historial
-                                    history_entry = {
-                                        **leave_data,
-                                        'action': 'salió'
-                                    }
-                                    all_history.append(history_entry)
-                                    
-                                    # Remover de usuarios actuales
-                                    del current_viewers[username]
-                                    
-                                    print(f'👋 {username} salió del stream (detectado periódicamente) a las {leave_time}')
+                for username in users_to_remove:
+                    if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
+                        user_data = current_viewers[username]
+                        leave_time = get_santiago_time()
                         
-                        print(f'📊 Verificación periódica completada. Total usuarios: {len(current_viewers)}')
+                        # Calcular duración
+                        duration = calculate_duration(user_data['join_time'], leave_time)
                         
-                    except Exception as e:
-                        print(f'⚠️ Error en verificación periódica: {e}')
+                        # Crear entrada de salida
+                        leave_data = {
+                            'username': username,
+                            'join_time': user_data['join_time'],
+                            'leave_time': leave_time,
+                            'duration': duration,
+                            'status': 'salió'
+                        }
                         
+                        left_viewers.append(leave_data)
+                        
+                        history_entry = {
+                            **leave_data,
+                            'action': 'salió'
+                        }
+                        all_history.append(history_entry)
+                        
+                        del current_viewers[username]
+                        
+                        print(f'{username} salió del stream (Estuvo: {duration})')
+                
+                print(f'Usuarios actuales: {len(current_viewers)}')
+                
             except Exception as e:
-                print(f'⚠️ Error en verificación periódica general: {e}')
-                await asyncio.sleep(30)
+                print(f'Error en monitor_loop: {e}')
+                time.sleep(10)
     
-    async def active_user_check(self):
-        """Verificación de usuarios activos cada 10 segundos"""
-        while True:
-            try:
-                await asyncio.sleep(10)  # Esperar 10 segundos
-                
-                # Obtener usuarios del canal para verificar actividad
-                channel = self.get_channel(self.channel_name)
-                if channel:
-                    try:
-                        users = await channel.chatters()
-                        if users:
-                            current_users = set(user.name if hasattr(user, 'name') else str(user) for user in users)
-                            
-                            # Agregar usuarios activos que no están en nuestra lista
-                            for username in current_users:
-                                if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
-                                    if username not in current_viewers:
-                                        join_time = get_santiago_time()
-                                        
-                                        user_data = {
-                                            'username': username,
-                                            'join_time': f"{join_time} (detectado activo)",
-                                            'leave_time': None,
-                                            'duration': None,
-                                            'status': 'viendo'
-                                        }
-                                        
-                                        current_viewers[username] = user_data
-                                        
-                                        history_entry = {
-                                            **user_data,
-                                            'action': 'detectado activo'
-                                        }
-                                        all_history.append(history_entry)
-                                        
-                                        print(f'👁️ {username} detectado como usuario activo')
-                        
-                        print(f'👁️ Verificación de usuarios activos completada. Total: {len(current_viewers)}')
-                        
-                    except Exception as e:
-                        print(f'⚠️ Error en verificación de usuarios activos: {e}')
-                        
-            except Exception as e:
-                print(f'⚠️ Error en verificación de usuarios activos general: {e}')
-                await asyncio.sleep(10)
 
 def get_santiago_time() -> str:
     """Obtiene la hora actual en Santiago, Chile"""
@@ -406,8 +253,6 @@ def calculate_duration(start_time: str, end_time: str) -> str:
     
     return f"{hours}h {minutes}m {seconds}s"
 
-# Crear instancia del bot
-bot = TwitchTracker()
 
 # Rutas de la API
 @app.route('/')
@@ -904,16 +749,12 @@ def get_historial():
         'timestamp': get_santiago_time()
     })
 
-def run_bot():
-    """Ejecuta el bot de Twitch en segundo plano"""
-    asyncio.run(bot.run())
+# Crear instancia del tracker
+tracker = TwitchTracker()
 
 if __name__ == '__main__':
-    import threading
-    
-    # Iniciar el bot en un hilo separado
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
+    # Iniciar el tracker
+    tracker.start()
     
     # Iniciar el servidor Flask
     port = int(os.getenv('PORT', 3000))
