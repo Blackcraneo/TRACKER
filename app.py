@@ -42,7 +42,7 @@ EXCLUDED_BOTS = [
 
 class TwitchTracker:
     def __init__(self):
-        self.client_id = 'mo983ad8zpisqtkezy4q4ky7qvcoc4'  # Client ID actualizado desde la imagen
+        self.client_id = os.getenv('TWITCH_CLIENT_ID', 'mo983ad8zpisqtkezy4q4ky7qvcoc4')
         self.client_secret = os.getenv('TWITCH_CLIENT_SECRET', '')
         self.channel_name = 'blackcraneo'
         self.channel_id = None
@@ -1017,6 +1017,27 @@ def get_logs():
         'timestamp': get_santiago_time()
     })
 
+@app.route('/api/status')
+def status_endpoint():
+    """Endpoint para verificar el estado del sistema"""
+    try:
+        return jsonify({
+            'status': 'ok',
+            'tracker_running': tracker.running,
+            'logs_count': len(tracker.logs),
+            'has_token': bool(tracker.token),
+            'channel_id': tracker.channel_id,
+            'client_secret_configured': bool(tracker.client_secret),
+            'recent_logs': tracker.logs[-10:] if tracker.logs else [],
+            'timestamp': get_santiago_time()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': get_santiago_time()
+        })
+
 @app.route('/api/debug')
 def debug_endpoint():
     """Endpoint de debugging para diagnosticar problemas"""
@@ -1061,10 +1082,43 @@ def debug_endpoint():
 # Crear instancia del tracker
 tracker = TwitchTracker()
 
+# Función para inicializar el tracker
+def initialize_tracker():
+    """Inicializa el tracker de forma segura"""
+    try:
+        print("=== INICIANDO TWITCH TRACKER ===")
+        tracker.add_log("🚀 Iniciando aplicación...")
+        tracker.add_log(f"📺 Canal: {tracker.channel_name}")
+        tracker.add_log(f"🆔 Client ID: {tracker.client_id}")
+        tracker.add_log(f"🔑 Client Secret configurado: {bool(tracker.client_secret)}")
+        tracker.add_log(f"🔑 Client Secret valor: {'***' if tracker.client_secret else 'NO CONFIGURADO'}")
+        
+        # Verificar variables de entorno
+        client_id_env = os.getenv('TWITCH_CLIENT_ID')
+        client_secret_env = os.getenv('TWITCH_CLIENT_SECRET')
+        tracker.add_log(f"📋 TWITCH_CLIENT_ID desde env: {'***' if client_id_env else 'NO CONFIGURADO'}")
+        tracker.add_log(f"📋 TWITCH_CLIENT_SECRET desde env: {'***' if client_secret_env else 'NO CONFIGURADO'}")
+        
+        # Intentar iniciar el tracker
+        tracker.add_log("🔄 Intentando iniciar tracker...")
+        tracker.start()
+        
+        if tracker.running:
+            tracker.add_log("✅ Tracker iniciado correctamente")
+        else:
+            tracker.add_log("❌ Tracker no se pudo iniciar")
+            
+    except Exception as e:
+        print(f"ERROR inicializando tracker: {e}")
+        tracker.add_log(f"❌ Error crítico al inicializar: {e}")
+        import traceback
+        tracker.add_log(f"❌ Traceback: {traceback.format_exc()}")
+
+# Inicializar el tracker inmediatamente
+initialize_tracker()
+
 if __name__ == '__main__':
-    # Iniciar el tracker
-    tracker.start()
-    
     # Iniciar el servidor Flask
     port = int(os.getenv('PORT', 3000))
+    print(f"🌐 Iniciando servidor en puerto {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
