@@ -3,4 +3,4 @@ flask-cors==4.0.0
 python-dotenv==1.0.0
 pytz==2023.3
 gunicorn==21.2.0
-twitchio==2.8.2
+requests==2.31.0

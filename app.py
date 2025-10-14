@@ -523,21 +523,21 @@ def dashboard():
                 <div class="panel">
                     <div class="panel-header">👥 Viendo Ahora</div>
                     <div class="panel-content scrollbar-custom" id="viendo-list">
-                        <div class="empty-message">Esperando usuarios...</div>
+                        <div class="empty-message">En espera de usuarios</div>
                     </div>
                 </div>
                 
                 <div class="panel">
                     <div class="panel-header">🚪 Salieron Recientemente</div>
                     <div class="panel-content scrollbar-custom" id="salieron-list">
-                        <div class="empty-message">Nadie ha salido aún</div>
+                        <div class="empty-message">En espera de usuarios</div>
                     </div>
                 </div>
                 
                 <div class="panel">
                     <div class="panel-header">📊 Historial Completo</div>
                     <div class="panel-content scrollbar-custom" id="historial-list">
-                        <div class="empty-message">Historial vacío</div>
+                        <div class="empty-message">Aún no hay historial</div>
                     </div>
                 </div>
             </div>
@@ -579,7 +579,7 @@ def dashboard():
                         list.innerHTML = '';
                         
                         if (data.users.length === 0) {
-                            list.innerHTML = '<div class="empty-message">Esperando usuarios...</div>';
+                            list.innerHTML = '<div class="empty-message">En espera de usuarios</div>';
                             return;
                         }
                         
@@ -606,7 +606,7 @@ def dashboard():
                         list.innerHTML = '';
                         
                         if (data.users.length === 0) {
-                            list.innerHTML = '<div class="empty-message">Nadie ha salido aún</div>';
+                            list.innerHTML = '<div class="empty-message">En espera de usuarios</div>';
                             return;
                         }
                         
@@ -634,7 +634,7 @@ def dashboard():
                         list.innerHTML = '';
                         
                         if (data.history.length === 0) {
-                            list.innerHTML = '<div class="empty-message">Historial vacío</div>';
+                            list.innerHTML = '<div class="empty-message">Aún no hay historial</div>';
                             return;
                         }
                         
