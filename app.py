@@ -35,6 +35,7 @@ EXCLUDED_BOTS = [
     'fossabot',  # Fossabot
     'wizebot',  # Wizebot
     'deepbot',  # Deepbot
+    'creatisbot', #Creatisbot
     # Agrega aquí los nombres de tus bots personalizados
 ]
 
