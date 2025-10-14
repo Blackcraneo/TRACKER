@@ -116,6 +116,36 @@ class TwitchTracker:
             self.add_log('Token expirado o no existe, renovando...')
             return self.get_app_access_token()
         return True
+    
+    def mark_user_left(self, username):
+        """Marca un usuario como que salió del stream"""
+        if username in current_viewers:
+            user_data = current_viewers[username]
+            leave_time = get_santiago_time()
+            
+            # Calcular duración
+            duration = calculate_duration(user_data['join_time'], leave_time)
+            
+            # Crear entrada de salida
+            leave_data = {
+                'username': username,
+                'join_time': user_data['join_time'],
+                'leave_time': leave_time,
+                'duration': duration,
+                'status': 'salió'
+            }
+            
+            left_viewers.append(leave_data)
+            
+            history_entry = {
+                **leave_data,
+                'action': 'salió'
+            }
+            all_history.append(history_entry)
+            
+            del current_viewers[username]
+            
+            self.add_log(f'🚪 {username} salió del stream (Estuvo: {duration})')
         
     def start(self):
         """Inicia el tracker"""
@@ -182,6 +212,8 @@ class TwitchTracker:
                 data = response.json()
                 chatters = [user['user_name'] for user in data.get('data', [])]
                 self.add_log(f"Chatters obtenidos: {len(chatters)} usuarios")
+                if chatters:
+                    self.add_log(f"Lista de chatters: {', '.join(chatters[:5])}{'...' if len(chatters) > 5 else ''}")
                 return chatters
             elif response.status_code == 401:
                 self.add_log(f"ERROR: Token OAuth inválido o expirado (401)")
@@ -213,6 +245,7 @@ class TwitchTracker:
                     stream_data = data['data'][0]
                     viewer_count = stream_data.get('viewer_count', 0)
                     self.add_log(f"Stream activo: {viewer_count} espectadores")
+                    self.add_log(f"Título del stream: {stream_data.get('title', 'Sin título')}")
                     return {
                         'is_live': True,
                         'viewer_count': viewer_count,
@@ -220,7 +253,7 @@ class TwitchTracker:
                         'game_name': stream_data.get('game_name', '')
                     }
                 else:
-                    self.add_log("Stream no está en vivo")
+                    # No log de stream offline - el tracker debe funcionar siempre
                     return {'is_live': False, 'viewer_count': 0}
             else:
                 self.add_log(f"ERROR obteniendo stream: {response.status_code}")
@@ -244,6 +277,9 @@ class TwitchTracker:
                 data = response.json()
                 follows = data.get('data', [])
                 self.add_log(f"Follows recientes: {len(follows)} usuarios")
+                if follows:
+                    follow_names = [follow['from_name'] for follow in follows[:3]]
+                    self.add_log(f"Últimos follows: {', '.join(follow_names)}")
                 return follows
             else:
                 self.add_log(f"ERROR obteniendo follows: {response.status_code}")
@@ -314,7 +350,9 @@ class TwitchTracker:
                     time.sleep(30)
                     continue
                 
-                self.add_log('🔍 Verificando usuarios activos...')
+                # Log menos frecuente para no saturar
+                if len(tracker.logs) < 10 or "Verificando usuarios activos" not in tracker.logs[-1]:
+                    self.add_log('🔍 Verificando usuarios activos...')
                 
                 # Obtener información del stream
                 stream_info = self.get_stream_info()
@@ -326,8 +364,10 @@ class TwitchTracker:
                 recent_follows = self.get_recent_follows()
                 
                 # Procesar follows como nuevos espectadores
+                self.add_log(f"Procesando {len(recent_follows)} follows recientes...")
                 for follow in recent_follows:
                     username = follow['from_name']
+                    self.add_log(f"Evaluando follow: {username}")
                     if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
                         if username not in current_viewers:
                             join_time = get_santiago_time()
@@ -349,9 +389,15 @@ class TwitchTracker:
                             all_history.append(history_entry)
                             
                             self.add_log(f'👥 {username} detectado por follow')
+                        else:
+                            self.add_log(f"{username} ya está en la lista de usuarios")
+                    else:
+                        self.add_log(f"{username} es un bot, excluido")
                 
                 # Procesar chatters como espectadores activos
+                self.add_log(f"Procesando {len(current_chatters)} chatters...")
                 for username in current_chatters:
+                    self.add_log(f"Evaluando chatter: {username}")
                     if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
                         if username not in current_viewers:
                             join_time = get_santiago_time()
@@ -373,6 +419,10 @@ class TwitchTracker:
                             all_history.append(history_entry)
                             
                             self.add_log(f'💬 {username} detectado por chat')
+                        else:
+                            self.add_log(f"{username} ya está en la lista de usuarios")
+                    else:
+                        self.add_log(f"{username} es un bot, excluido")
                 
                 # Detectar usuarios que salieron (si no están en chatters ni follows recientes)
                 users_to_remove = []
@@ -385,38 +435,25 @@ class TwitchTracker:
                 
                 for username in users_to_remove:
                     if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
-                        user_data = current_viewers[username]
-                        leave_time = get_santiago_time()
-                        
-                        # Calcular duración
-                        duration = calculate_duration(user_data['join_time'], leave_time)
-                        
-                        # Crear entrada de salida
-                        leave_data = {
-                            'username': username,
-                            'join_time': user_data['join_time'],
-                            'leave_time': leave_time,
-                            'duration': duration,
-                            'status': 'salió'
-                        }
-                        
-                        left_viewers.append(leave_data)
-                        
-                        history_entry = {
-                            **leave_data,
-                            'action': 'salió'
-                        }
-                        all_history.append(history_entry)
-                        
-                        del current_viewers[username]
-                        
-                        self.add_log(f'🚪 {username} salió del stream (Estuvo: {duration})')
+                        self.mark_user_left(username)
                 
-                # Log del estado actual
+                # Log del estado actual solo cuando hay actividad
                 if stream_info['is_live']:
                     self.add_log(f'📊 Estado: {len(current_viewers)} usuarios detectados, {stream_info["viewer_count"]} espectadores totales')
-                else:
-                    self.add_log(f'📊 Estado: {len(current_viewers)} usuarios detectados, stream offline')
+                elif len(current_viewers) > 0:
+                    # Solo mostrar estado si hay usuarios detectados
+                    self.add_log(f'📊 Estado: {len(current_viewers)} usuarios detectados')
+                
+                # Log detallado del estado
+                self.add_log(f"=== RESUMEN DEL CICLO ===")
+                self.add_log(f"Stream en vivo: {stream_info['is_live']}")
+                self.add_log(f"Chatters detectados: {len(current_chatters)}")
+                self.add_log(f"Follows recientes: {len(recent_follows)}")
+                self.add_log(f"Usuarios actuales: {len(current_viewers)}")
+                if current_viewers:
+                    user_list = list(current_viewers.keys())[:3]
+                    self.add_log(f"Usuarios actuales: {', '.join(user_list)}{'...' if len(current_viewers) > 3 else ''}")
+                self.add_log(f"Historial total: {len(all_history)} entradas")
                 
             except Exception as e:
                 self.add_log(f'❌ Error en monitor_loop: {e}')
@@ -979,6 +1016,47 @@ def get_logs():
         'count': len(tracker.logs),
         'timestamp': get_santiago_time()
     })
+
+@app.route('/api/debug')
+def debug_endpoint():
+    """Endpoint de debugging para diagnosticar problemas"""
+    try:
+        # Obtener datos en tiempo real
+        chatters = tracker.get_chatters() if tracker.channel_id else []
+        follows = tracker.get_recent_follows() if tracker.channel_id else []
+        stream_info = tracker.get_stream_info() if tracker.channel_id else {'is_live': False}
+        
+        return jsonify({
+            'debug_info': {
+                'tracker_running': tracker.running,
+                'has_token': bool(tracker.token),
+                'channel_id': tracker.channel_id,
+                'channel_name': tracker.channel_name,
+                'client_secret_configured': bool(tracker.client_secret)
+            },
+            'current_data': {
+                'chatters_count': len(chatters),
+                'chatters_list': chatters[:10],  # Primeros 10
+                'follows_count': len(follows),
+                'follows_list': [f['from_name'] for f in follows[:5]],  # Primeros 5
+                'stream_live': stream_info.get('is_live', False),
+                'viewer_count': stream_info.get('viewer_count', 0)
+            },
+            'tracker_state': {
+                'current_viewers': len(current_viewers),
+                'current_viewers_list': list(current_viewers.keys()),
+                'left_viewers': len(left_viewers),
+                'total_history': len(all_history)
+            },
+            'logs_count': len(tracker.logs),
+            'recent_logs': tracker.logs[-5:] if tracker.logs else [],
+            'timestamp': get_santiago_time()
+        })
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'timestamp': get_santiago_time()
+        })
 
 # Crear instancia del tracker
 tracker = TwitchTracker()
