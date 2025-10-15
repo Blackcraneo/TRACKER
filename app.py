@@ -375,7 +375,7 @@ class TwitchTracker:
                 'status': 'salió'
             }
             
-            # Agregar a base de datos
+            # Agregar solo salidas al historial con duración
             self.db.add_user_entry(username, 'salió del stream', user_data['join_time'], leave_time, duration)
             self.db.remove_current_user(username)
             
@@ -453,8 +453,7 @@ class TwitchTracker:
                     current_viewers[username] = user_data
                     self.user_join_times[username] = time.time()
                     
-                    # Agregar a base de datos
-                    self.db.add_user_entry(username, 'entró al stream', join_time)
+                    # Solo actualizar usuario actual (no agregar entrada de entrada al historial)
                     self.db.update_current_user(username, join_time)
                     
                     history_entry = {
@@ -829,10 +828,9 @@ def dashboard():
                 <div class="panel">
                     <div class="panel-header">📊 Historial Completo</div>
                     <div class="filters" style="padding: 10px; border-bottom: 1px solid #333;">
-                        <input type="text" id="usernameFilter" placeholder="Buscar por usuario..." style="margin-right: 10px; padding: 5px; border-radius: 4px; border: 1px solid #555; background: #222; color: #fff;">
-                        <input type="text" id="dateFilter" placeholder="DD-MM-YY" style="margin-right: 10px; padding: 5px; border-radius: 4px; border: 1px solid #555; background: #222; color: #fff;">
-                        <button onclick="applyFilters()" style="margin-right: 5px; padding: 5px 10px; border-radius: 4px; border: 1px solid #555; background: #007acc; color: #fff; cursor: pointer;">🔍 Filtrar</button>
-                        <button onclick="clearFilters()" style="padding: 5px 10px; border-radius: 4px; border: 1px solid #555; background: #dc3545; color: #fff; cursor: pointer;">🗑️ Limpiar</button>
+                        <input type="text" id="usernameFilter" placeholder="Buscar usuario (ej: MariaJo para MariaJosefina)..." style="margin-right: 10px; padding: 8px; border-radius: 6px; border: 2px solid #4CAF50; background: #1a1a1a; color: #fff; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif;">
+                        <button onclick="applyFilters()" style="margin-right: 5px; padding: 8px 15px; border-radius: 6px; border: 2px solid #2196F3; background: #2196F3; color: #fff; cursor: pointer; font-weight: bold; font-family: 'Segoe UI', Arial, sans-serif;">🔍 Buscar</button>
+                        <button onclick="clearFilters()" style="padding: 8px 15px; border-radius: 6px; border: 2px solid #f44336; background: #f44336; color: #fff; cursor: pointer; font-weight: bold; font-family: 'Segoe UI', Arial, sans-serif;">🗑️ Limpiar</button>
                     </div>
                     <div class="panel-content scrollbar-custom" id="historial-list">
                         <div class="empty-message">Aún no hay historial</div>
@@ -916,14 +914,20 @@ def dashboard():
                         
                         data.users.slice(-10).reverse().forEach(user => {
                             const item = document.createElement('div');
-                            item.className = 'user-item status-salió';
+                            item.className = 'user-item';
+                            item.style.padding = '12px';
+                            item.style.margin = '8px 0';
+                            item.style.background = 'linear-gradient(135deg, #4a1a1a 0%, #6d1b1b 100%)';
+                            item.style.borderRadius = '8px';
+                            item.style.borderLeft = '4px solid #f44336';
+                            item.style.boxShadow = '0 2px 8px rgba(244, 67, 54, 0.3)';
                             item.innerHTML = `
-                                <div>
-                                    <div class="user-name">${user.username}</div>
-                                    <div class="user-time">Salió: ${user.leave_time}</div>
-                                    <div class="user-duration">Estuvo: ${user.duration}</div>
+                                <div style="display: flex; align-items: center; justify-content: space-between;">
+                                    <span style="color: #f44336; font-weight: bold; font-size: 16px; font-family: 'Segoe UI', Arial, sans-serif;">🚪 ${user.username}</span>
+                                    <span style="color: #FFB74D; font-size: 12px; background: rgba(255, 183, 77, 0.2); padding: 4px 8px; border-radius: 12px;">Salió</span>
                                 </div>
-                                <div>🔴</div>
+                                <div style="color: #FFCDD2; font-size: 12px; margin-top: 4px;">Tiempo: ${user.duration || 'N/A'}</div>
+                                <div style="color: #B0BEC5; font-size: 11px;">Salió: ${user.leave_time}</div>
                             `;
                             list.appendChild(item);
                         });
@@ -1022,11 +1026,15 @@ def dashboard():
                                 const duration = entry.duration || '-';
                                 
                                 return `
-                                    <div class="user-item" style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #333;">
-                                        <span style="color: #4CAF50; font-weight: bold;">${entry.username}</span>
-                                        <span style="color: #2196F3;">${entry.action}</span>
-                                        <span style="color: #FF9800; font-size: 0.8em;">${entry.date_created}</span>
-                                        <span style="color: #9C27B0; font-size: 0.8em;">${duration}</span>
+                                    <div class="user-item" style="padding: 15px; margin: 10px 0; background: linear-gradient(135deg, #2c1810 0%, #3e2723 100%); border-radius: 10px; border-left: 5px solid #f44336; box-shadow: 0 3px 10px rgba(244, 67, 54, 0.3);">
+                                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                            <span style="color: #f44336; font-weight: bold; font-size: 18px; font-family: 'Segoe UI', Arial, sans-serif;">👤 ${entry.username}</span>
+                                            <span style="color: #FFB74D; font-size: 14px; background: rgba(255, 183, 77, 0.2); padding: 4px 10px; border-radius: 15px;">${entry.action}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; color: #B0BEC5; font-size: 13px;">
+                                            <span>📅 ${entry.date_created}</span>
+                                            <span style="color: #4CAF50; font-weight: bold;">⏱️ ${duration}</span>
+                                        </div>
                                     </div>
                                 `;
                             }).join('');
@@ -1039,13 +1047,12 @@ def dashboard():
 
             function applyFilters() {
                 const username = document.getElementById('usernameFilter').value;
-                const date = document.getElementById('dateFilter').value;
-                loadHistoryWithFilters(username, date);
+                // Solo buscar por username (no por fecha ya que solo mostramos salidas)
+                loadHistoryWithFilters(username, '');
             }
 
             function clearFilters() {
                 document.getElementById('usernameFilter').value = '';
-                document.getElementById('dateFilter').value = '';
                 loadHistoryWithFilters();
             }
 
@@ -1056,7 +1063,13 @@ def dashboard():
                         const viendoList = document.getElementById('viendo-list');
                         if (data.current_users && data.current_users.length > 0) {
                             viendoList.innerHTML = data.current_users.map(user => 
-                                `<div class="user-item">👤 ${user.username}</div>`
+                                `<div class="user-item" style="padding: 12px; margin: 8px 0; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-radius: 8px; border-left: 4px solid #4CAF50; box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);">
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <span style="color: #4CAF50; font-weight: bold; font-size: 16px; font-family: 'Segoe UI', Arial, sans-serif;">👤 ${user.username}</span>
+                                        <span style="color: #81C784; font-size: 12px; background: rgba(76, 175, 80, 0.2); padding: 4px 8px; border-radius: 12px;">En línea</span>
+                                    </div>
+                                    <div style="color: #B0BEC5; font-size: 12px; margin-top: 4px;">Entró: ${user.join_time}</div>
+                                </div>`
                             ).join('');
                         } else {
                             viendoList.innerHTML = '<div class="empty-message">No hay usuarios actuales</div>';
