@@ -1,14 +1,13 @@
 import os
-import asyncio
 import json
+import socket
+import threading
+import time
 from datetime import datetime
 from typing import Dict, List
 import pytz
 from flask import Flask, jsonify, render_template_string
 from flask_cors import CORS
-import requests
-import threading
-import time
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
@@ -42,16 +41,15 @@ EXCLUDED_BOTS = [
 
 class TwitchTracker:
     def __init__(self):
-        self.client_id = os.getenv('TWITCH_CLIENT_ID', 'mo983ad8zpisqtkezy4q4ky7qvcoc4')
-        self.client_secret = os.getenv('TWITCH_CLIENT_SECRET', '')
         self.channel_name = 'blackcraneo'
-        self.channel_id = None
-        self.token = None
-        self.token_expires_at = None
-        self.headers = {}
+        self.username = 'blackcraneo'  # Tu nombre de usuario
+        self.oauth_token = os.getenv('TWITCH_OAUTH', '')
+        self.socket = None
         self.running = False
-        self.logs = []  # Lista para almacenar logs
-        self.max_logs = 50  # Máximo número de logs a mantener
+        self.logs = []
+        self.max_logs = 50
+        self.connected_users = set()  # Usuarios conectados al chat
+        self.user_join_times = {}  # Tiempo de entrada de cada usuario
     
     def add_log(self, message):
         """Agrega un mensaje al log"""
@@ -72,50 +70,66 @@ class TwitchTracker:
             clean_entry = f"[{timestamp}] {clean_message}"
             print(clean_entry)
     
-    def get_app_access_token(self):
-        """Obtiene un token de aplicación usando Client Credentials Flow"""
+    def connect_to_chat(self):
+        """Conecta al chat de Twitch usando IRC"""
         try:
-            if not self.client_secret:
-                self.add_log('ERROR: TWITCH_CLIENT_SECRET no configurado')
+            if not self.oauth_token:
+                self.add_log('ERROR: TWITCH_OAUTH no configurado')
                 return False
             
-            url = 'https://id.twitch.tv/oauth2/token'
-            data = {
-                'client_id': self.client_id,
-                'client_secret': self.client_secret,
-                'grant_type': 'client_credentials'
-            }
+            # Conectar a IRC de Twitch
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.connect(('irc.chat.twitch.tv', 6667))
             
-            response = requests.post(url, data=data)
+            # Autenticación
+            self.send_command(f'PASS oauth:{self.oauth_token}')
+            self.send_command(f'NICK {self.username}')
+            self.send_command(f'JOIN #{self.channel_name}')
             
-            if response.status_code == 200:
-                token_data = response.json()
-                self.token = token_data['access_token']
-                self.token_expires_at = time.time() + token_data['expires_in']
-                
-                # Actualizar headers
-                self.headers = {
-                    'Authorization': f'Bearer {self.token}',
-                    'Client-Id': self.client_id
-                }
-                
-                self.add_log(f'Token de aplicacion obtenido exitosamente')
-                self.add_log(f'Token expira en: {token_data["expires_in"]} segundos')
-                return True
-            else:
-                self.add_log(f'ERROR obteniendo token: {response.status_code} - {response.text}')
-                return False
-                
+            self.add_log('Conectado al chat de Twitch exitosamente')
+            return True
+            
         except Exception as e:
-            self.add_log(f'ERROR en get_app_access_token: {e}')
+            self.add_log(f'ERROR conectando al chat: {e}')
             return False
     
-    def ensure_valid_token(self):
-        """Asegura que el token sea válido, lo renueva si es necesario"""
-        if not self.token or (self.token_expires_at and time.time() >= self.token_expires_at - 300):
-            self.add_log('Token expirado o no existe, renovando...')
-            return self.get_app_access_token()
-        return True
+    def send_command(self, command):
+        """Envía un comando al IRC"""
+        if self.socket:
+            self.socket.send(f'{command}\r\n'.encode('utf-8'))
+    
+    def parse_message(self, message):
+        """Parsea mensajes IRC de Twitch"""
+        try:
+            if 'PRIVMSG' in message:
+                # Extraer información del usuario
+                parts = message.split('PRIVMSG')
+                if len(parts) >= 2:
+                    user_part = parts[0].split('!')[0].replace(':', '')
+                    username = user_part.split('@')[0] if '@' in user_part else user_part
+                    
+                    # Extraer mensaje
+                    msg_part = parts[1].split(':', 1)
+                    if len(msg_part) >= 2:
+                        chat_message = msg_part[1].strip()
+                        return username, chat_message
+            
+            elif 'JOIN' in message:
+                # Usuario se unió al chat
+                user_part = message.split('!')[0].replace(':', '')
+                username = user_part.split('@')[0] if '@' in user_part else user_part
+                return username, 'JOIN'
+                
+            elif 'PART' in message:
+                # Usuario salió del chat
+                user_part = message.split('!')[0].replace(':', '')
+                username = user_part.split('@')[0] if '@' in user_part else user_part
+                return username, 'PART'
+                
+        except Exception as e:
+            self.add_log(f'ERROR parseando mensaje: {e}')
+        
+        return None, None
     
     def mark_user_left(self, username):
         """Marca un usuario como que salió del stream"""
@@ -148,316 +162,161 @@ class TwitchTracker:
             self.add_log(f'🚪 {username} salió del stream (Estuvo: {duration})')
         
     def start(self):
-        """Inicia el tracker"""
-        self.add_log('🚀 Iniciando Twitch Tracker...')
+        """Inicia el tracker IRC"""
+        self.add_log('🚀 Iniciando Twitch IRC Tracker...')
         self.add_log(f'📺 Canal: {self.channel_name}')
-        self.add_log(f'🆔 Client ID: {self.client_id}')
-        self.add_log(f'🔑 Client Secret configurado: {bool(self.client_secret)}')
+        self.add_log(f'👤 Usuario: {self.username}')
+        self.add_log(f'🔑 OAuth configurado: {bool(self.oauth_token)}')
         
-        # Obtener token de aplicación
-        if not self.get_app_access_token():
-            self.add_log('❌ Error: No se pudo obtener token de aplicación')
+        # Conectar al chat
+        if not self.connect_to_chat():
+            self.add_log('❌ Error: No se pudo conectar al chat')
             return
         
         self.running = True
         
-        # Obtener ID del canal
-        if self.get_channel_id():
-            self.add_log(f'✅ Canal encontrado. ID: {self.channel_id}')
-            
-            # Cargar usuarios iniciales
-            self.load_existing_users()
-            
-            # Iniciar monitoreo
-            threading.Thread(target=self.monitor_loop, daemon=True).start()
-            self.add_log('🎯 Twitch Tracker iniciado correctamente')
-        else:
-            self.add_log('❌ Error: No se pudo obtener el ID del canal')
-            self.running = False
+        # Iniciar monitoreo IRC
+        threading.Thread(target=self.irc_loop, daemon=True).start()
+        threading.Thread(target=self.monitor_loop, daemon=True).start()
+        self.add_log('🎯 Twitch IRC Tracker iniciado correctamente')
     
-    def get_channel_id(self):
-        """Obtiene el ID del canal usando la API de Twitch"""
-        try:
-            url = f'https://api.twitch.tv/helix/users?login={self.channel_name}'
-            response = requests.get(url, headers=self.headers)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data['data']:
-                    self.channel_id = data['data'][0]['id']
-                    self.add_log(f'✅ ID del canal obtenido: {self.channel_id}')
-                    return True
-                else:
-                    self.add_log('❌ Canal no encontrado en la API')
-            else:
-                self.add_log(f'❌ Error obteniendo canal: {response.status_code} - {response.text}')
-                
-        except Exception as e:
-            self.add_log(f'❌ Error en get_channel_id: {e}')
+    def irc_loop(self):
+        """Loop principal para recibir mensajes IRC"""
+        self.add_log('🔄 Iniciando loop IRC...')
         
-        return False
-    
-    def get_chatters(self):
-        """Obtiene la lista de chatters del canal usando el endpoint correcto"""
-        try:
-            # Asegurar token válido
-            if not self.ensure_valid_token():
-                return []
-            
-            # Endpoint correcto para obtener chatters
-            url = f'https://api.twitch.tv/helix/chat/chatters?broadcaster_id={self.channel_id}&moderator_id={self.channel_id}'
-            response = requests.get(url, headers=self.headers)
-            
-            if response.status_code == 200:
-                data = response.json()
-                chatters = [user['user_name'] for user in data.get('data', [])]
-                self.add_log(f"Chatters obtenidos: {len(chatters)} usuarios")
-                if chatters:
-                    self.add_log(f"Lista de chatters: {', '.join(chatters[:5])}{'...' if len(chatters) > 5 else ''}")
-                return chatters
-            elif response.status_code == 401:
-                self.add_log(f"ERROR: Token OAuth inválido o expirado (401)")
-                return []
-            elif response.status_code == 403:
-                self.add_log(f"ERROR: Sin permisos de moderador (403)")
-                return []
-            else:
-                self.add_log(f"ERROR obteniendo chatters: {response.status_code} - {response.text}")
-                return []
+        while self.running and self.socket:
+            try:
+                # Recibir datos del socket
+                data = self.socket.recv(1024).decode('utf-8')
                 
-        except Exception as e:
-            self.add_log(f"ERROR en get_chatters: {e}")
-            return []
-    
-    def get_stream_info(self):
-        """Obtiene información del stream actual"""
-        try:
-            # Asegurar token válido
-            if not self.ensure_valid_token():
-                return {'is_live': False, 'viewer_count': 0}
-            
-            url = f'https://api.twitch.tv/helix/streams?user_id={self.channel_id}'
-            response = requests.get(url, headers=self.headers)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data['data']:
-                    stream_data = data['data'][0]
-                    viewer_count = stream_data.get('viewer_count', 0)
-                    self.add_log(f"Stream activo: {viewer_count} espectadores")
-                    self.add_log(f"Título del stream: {stream_data.get('title', 'Sin título')}")
-                    return {
-                        'is_live': True,
-                        'viewer_count': viewer_count,
-                        'title': stream_data.get('title', ''),
-                        'game_name': stream_data.get('game_name', '')
-                    }
-                else:
-                    # No log de stream offline - el tracker debe funcionar siempre
-                    return {'is_live': False, 'viewer_count': 0}
-            else:
-                self.add_log(f"ERROR obteniendo stream: {response.status_code}")
-                return {'is_live': False, 'viewer_count': 0}
+                if not data:
+                    self.add_log('❌ Conexión IRC perdida')
+                    break
                 
-        except Exception as e:
-            self.add_log(f"ERROR en get_stream_info: {e}")
-            return {'is_live': False, 'viewer_count': 0}
+                # Procesar cada línea
+                for line in data.split('\r\n'):
+                    if line.strip():
+                        self.process_irc_message(line.strip())
+                        
+            except Exception as e:
+                self.add_log(f'❌ Error en irc_loop: {e}')
+                time.sleep(5)
     
-    def get_recent_follows(self):
-        """Obtiene follows recientes del canal"""
+    def process_irc_message(self, message):
+        """Procesa un mensaje IRC"""
         try:
-            # Asegurar token válido
-            if not self.ensure_valid_token():
-                return []
+            # PING/PONG para mantener conexión
+            if message.startswith('PING'):
+                self.send_command('PONG :tmi.twitch.tv')
+                return
             
-            url = f'https://api.twitch.tv/helix/users/follows?to_id={self.channel_id}&first=10'
-            response = requests.get(url, headers=self.headers)
+            # Parsear mensaje
+            username, action = self.parse_message(message)
             
-            if response.status_code == 200:
-                data = response.json()
-                follows = data.get('data', [])
-                self.add_log(f"Follows recientes: {len(follows)} usuarios")
-                if follows:
-                    follow_names = [follow['from_name'] for follow in follows[:3]]
-                    self.add_log(f"Últimos follows: {', '.join(follow_names)}")
-                return follows
-            else:
-                self.add_log(f"ERROR obteniendo follows: {response.status_code}")
-                return []
+            if username and action:
+                # Excluir bots
+                if username.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
+                    return
                 
+                if action == 'JOIN':
+                    self.handle_user_join(username)
+                elif action == 'PART':
+                    self.handle_user_part(username)
+                elif isinstance(action, str) and action != 'JOIN' and action != 'PART':
+                    # Mensaje de chat
+                    self.handle_user_message(username, action)
+                    
         except Exception as e:
-            self.add_log(f"ERROR en get_recent_follows: {e}")
-            return []
+            self.add_log(f'❌ Error procesando mensaje IRC: {e}')
     
-    def load_existing_users(self):
-        """Carga usuarios que ya están en el chat cuando se conecta el bot"""
-        self.add_log(f'📥 Cargando usuarios existentes del canal: {self.channel_name}')
+    def handle_user_join(self, username):
+        """Maneja cuando un usuario se une al chat"""
+        if username not in self.connected_users:
+            self.connected_users.add(username)
+            self.user_join_times[username] = get_santiago_time()
+            
+            # Agregar a current_viewers si no está
+            if username not in current_viewers:
+                user_data = {
+                    'username': username,
+                    'join_time': f"{get_santiago_time()} (IRC detectado)",
+                    'leave_time': None,
+                    'duration': None,
+                    'status': 'viendo'
+                }
+                
+                current_viewers[username] = user_data
+                
+                history_entry = {
+                    **user_data,
+                    'action': 'detectado por IRC'
+                }
+                all_history.append(history_entry)
+                
+                self.add_log(f'👥 {username} detectado por IRC (se unió al chat)')
+    
+    def handle_user_part(self, username):
+        """Maneja cuando un usuario sale del chat"""
+        if username in self.connected_users:
+            self.connected_users.remove(username)
+            if username in self.user_join_times:
+                del self.user_join_times[username]
+            
+            # Marcar como que salió
+            self.mark_user_left(username)
+    
+    def handle_user_message(self, username, message):
+        """Maneja cuando un usuario escribe en el chat"""
+        # Si no está en connected_users, agregarlo
+        if username not in self.connected_users:
+            self.connected_users.add(username)
+            self.user_join_times[username] = get_santiago_time()
         
-        try:
-            chatters = self.get_chatters()
+        # Asegurar que esté en current_viewers
+        if username not in current_viewers:
+            user_data = {
+                'username': username,
+                'join_time': f"{get_santiago_time()} (chat detectado)",
+                'leave_time': None,
+                'duration': None,
+                'status': 'viendo'
+            }
             
-            if chatters:
-                join_time = get_santiago_time()
-                users_loaded = 0
-                
-                for username in chatters:
-                    # Excluir bots
-                    if username.lower() in [bot.lower() for bot in EXCLUDED_BOTS]:
-                        self.add_log(f'🤖 Bot excluido: {username}')
-                        continue
-                    
-                    # Agregar usuario existente
-                    user_data = {
-                        'username': username,
-                        'join_time': f"{join_time} (ya estaba)",
-                        'leave_time': None,
-                        'duration': None,
-                        'status': 'viendo'
-                    }
-                    
-                    current_viewers[username] = user_data
-                    users_loaded += 1
-                    
-                    # Agregar al historial como usuario existente
-                    history_entry = {
-                        **user_data,
-                        'action': 'ya estaba'
-                    }
-                    all_history.append(history_entry)
-                    
-                    self.add_log(f'👤 Usuario cargado: {username}')
-                
-                self.add_log(f'✅ Total cargados: {users_loaded} usuarios que ya estaban en el chat')
-            else:
-                self.add_log('⚠️ No se recibieron chatters del canal')
-                
-        except Exception as e:
-            self.add_log(f'❌ Error cargando usuarios existentes: {e}')
-        
-        self.add_log(f'📊 Estado actual: {len(current_viewers)} usuarios en la lista')
+            current_viewers[username] = user_data
+            
+            history_entry = {
+                **user_data,
+                'action': 'detectado por chat'
+            }
+            all_history.append(history_entry)
+            
+            self.add_log(f'💬 {username} detectado por chat')
+    
+    
     
     def monitor_loop(self):
-        """Loop principal de monitoreo"""
+        """Loop principal de monitoreo - solo estadísticas"""
         self.add_log('🔄 Iniciando loop de monitoreo...')
         
         while self.running:
             try:
-                time.sleep(5)  # Verificar cada 5 segundos
+                # Solo mostrar estadísticas cada 30 segundos
+                time.sleep(30)
                 
-                # Asegurar que el token sea válido
-                if not self.ensure_valid_token():
-                    self.add_log('❌ Error: No se pudo renovar token, reintentando en 30s...')
-                    time.sleep(30)
-                    continue
-                
-                # Log menos frecuente para no saturar
-                if len(tracker.logs) < 10 or "Verificando usuarios activos" not in tracker.logs[-1]:
-                    self.add_log('🔍 Verificando usuarios activos...')
-                
-                # Obtener información del stream
-                stream_info = self.get_stream_info()
-                
-                # Obtener chatters del chat
-                current_chatters = set(self.get_chatters())
-                
-                # Obtener follows recientes
-                recent_follows = self.get_recent_follows()
-                
-                # Procesar follows como nuevos espectadores
-                self.add_log(f"Procesando {len(recent_follows)} follows recientes...")
-                for follow in recent_follows:
-                    username = follow['from_name']
-                    self.add_log(f"Evaluando follow: {username}")
-                    if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
-                        if username not in current_viewers:
-                            join_time = get_santiago_time()
-                            
-                            user_data = {
-                                'username': username,
-                                'join_time': f"{join_time} (follow detectado)",
-                                'leave_time': None,
-                                'duration': None,
-                                'status': 'viendo'
-                            }
-                            
-                            current_viewers[username] = user_data
-                            
-                            history_entry = {
-                                **user_data,
-                                'action': 'detectado por follow'
-                            }
-                            all_history.append(history_entry)
-                            
-                            self.add_log(f'👥 {username} detectado por follow')
-                        else:
-                            self.add_log(f"{username} ya está en la lista de usuarios")
-                    else:
-                        self.add_log(f"{username} es un bot, excluido")
-                
-                # Procesar chatters como espectadores activos
-                self.add_log(f"Procesando {len(current_chatters)} chatters...")
-                for username in current_chatters:
-                    self.add_log(f"Evaluando chatter: {username}")
-                    if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
-                        if username not in current_viewers:
-                            join_time = get_santiago_time()
-                            
-                            user_data = {
-                                'username': username,
-                                'join_time': f"{join_time} (chat detectado)",
-                                'leave_time': None,
-                                'duration': None,
-                                'status': 'viendo'
-                            }
-                            
-                            current_viewers[username] = user_data
-                            
-                            history_entry = {
-                                **user_data,
-                                'action': 'detectado por chat'
-                            }
-                            all_history.append(history_entry)
-                            
-                            self.add_log(f'💬 {username} detectado por chat')
-                        else:
-                            self.add_log(f"{username} ya está en la lista de usuarios")
-                    else:
-                        self.add_log(f"{username} es un bot, excluido")
-                
-                # Detectar usuarios que salieron (si no están en chatters ni follows recientes)
-                users_to_remove = []
-                for username in current_viewers.keys():
-                    if username not in current_chatters:
-                        # Verificar si no está en follows recientes
-                        in_recent_follows = any(follow['from_name'] == username for follow in recent_follows)
-                        if not in_recent_follows:
-                            users_to_remove.append(username)
-                
-                for username in users_to_remove:
-                    if username.lower() not in [bot.lower() for bot in EXCLUDED_BOTS]:
-                        self.mark_user_left(username)
-                
-                # Log del estado actual solo cuando hay actividad
-                if stream_info['is_live']:
-                    self.add_log(f'📊 Estado: {len(current_viewers)} usuarios detectados, {stream_info["viewer_count"]} espectadores totales')
-                elif len(current_viewers) > 0:
-                    # Solo mostrar estado si hay usuarios detectados
-                    self.add_log(f'📊 Estado: {len(current_viewers)} usuarios detectados')
-                
-                # Log detallado del estado
-                self.add_log(f"=== RESUMEN DEL CICLO ===")
-                self.add_log(f"Stream en vivo: {stream_info['is_live']}")
-                self.add_log(f"Chatters detectados: {len(current_chatters)}")
-                self.add_log(f"Follows recientes: {len(recent_follows)}")
-                self.add_log(f"Usuarios actuales: {len(current_viewers)}")
-                if current_viewers:
-                    user_list = list(current_viewers.keys())[:3]
-                    self.add_log(f"Usuarios actuales: {', '.join(user_list)}{'...' if len(current_viewers) > 3 else ''}")
-                self.add_log(f"Historial total: {len(all_history)} entradas")
+                if self.running:
+                    # Estadísticas
+                    self.add_log(f'📊 Estado IRC: {len(self.connected_users)} usuarios conectados')
+                    self.add_log(f'📈 Total detectados: {len(current_viewers)} usuarios')
+                    self.add_log(f'📋 Historial total: {len(all_history)} entradas')
+                    
+                    # Mostrar usuarios conectados recientemente
+                    if len(current_viewers) > 0:
+                        recent_users = list(current_viewers.keys())[-3:]
+                        self.add_log(f'👥 Usuarios recientes: {", ".join(recent_users)}')
                 
             except Exception as e:
                 self.add_log(f'❌ Error en monitor_loop: {e}')
-                time.sleep(5)
+                time.sleep(10)
     
 
 def get_santiago_time() -> str:
@@ -1019,15 +878,18 @@ def get_logs():
 
 @app.route('/api/status')
 def status_endpoint():
-    """Endpoint para verificar el estado del sistema"""
+    """Endpoint para verificar el estado del sistema IRC"""
     try:
         return jsonify({
             'status': 'ok',
             'tracker_running': tracker.running,
+            'irc_connected': bool(tracker.socket),
+            'oauth_configured': bool(tracker.oauth_token),
+            'channel_name': tracker.channel_name,
+            'connected_users_count': len(tracker.connected_users),
+            'current_viewers_count': len(current_viewers),
+            'total_history_count': len(all_history),
             'logs_count': len(tracker.logs),
-            'has_token': bool(tracker.token),
-            'channel_id': tracker.channel_id,
-            'client_secret_configured': bool(tracker.client_secret),
             'recent_logs': tracker.logs[-10:] if tracker.logs else [],
             'timestamp': get_santiago_time()
         })
@@ -1040,28 +902,20 @@ def status_endpoint():
 
 @app.route('/api/debug')
 def debug_endpoint():
-    """Endpoint de debugging para diagnosticar problemas"""
+    """Endpoint de debugging para diagnosticar problemas IRC"""
     try:
-        # Obtener datos en tiempo real
-        chatters = tracker.get_chatters() if tracker.channel_id else []
-        follows = tracker.get_recent_follows() if tracker.channel_id else []
-        stream_info = tracker.get_stream_info() if tracker.channel_id else {'is_live': False}
-        
         return jsonify({
             'debug_info': {
                 'tracker_running': tracker.running,
-                'has_token': bool(tracker.token),
-                'channel_id': tracker.channel_id,
+                'irc_connected': bool(tracker.socket),
+                'oauth_configured': bool(tracker.oauth_token),
                 'channel_name': tracker.channel_name,
-                'client_secret_configured': bool(tracker.client_secret)
+                'username': tracker.username
             },
-            'current_data': {
-                'chatters_count': len(chatters),
-                'chatters_list': chatters[:10],  # Primeros 10
-                'follows_count': len(follows),
-                'follows_list': [f['from_name'] for f in follows[:5]],  # Primeros 5
-                'stream_live': stream_info.get('is_live', False),
-                'viewer_count': stream_info.get('viewer_count', 0)
+            'irc_data': {
+                'connected_users_count': len(tracker.connected_users),
+                'connected_users_list': list(tracker.connected_users)[:10],  # Primeros 10
+                'user_join_times': dict(list(tracker.user_join_times.items())[:5])  # Primeros 5
             },
             'tracker_state': {
                 'current_viewers': len(current_viewers),
@@ -1084,32 +938,30 @@ tracker = TwitchTracker()
 
 # Función para inicializar el tracker
 def initialize_tracker():
-    """Inicializa el tracker de forma segura"""
+    """Inicializa el tracker IRC de forma segura"""
     try:
-        print("=== INICIANDO TWITCH TRACKER ===")
-        tracker.add_log("🚀 Iniciando aplicación...")
+        print("=== INICIANDO TWITCH IRC TRACKER ===")
+        tracker.add_log("🚀 Iniciando aplicación IRC...")
         tracker.add_log(f"📺 Canal: {tracker.channel_name}")
-        tracker.add_log(f"🆔 Client ID: {tracker.client_id}")
-        tracker.add_log(f"🔑 Client Secret configurado: {bool(tracker.client_secret)}")
-        tracker.add_log(f"🔑 Client Secret valor: {'***' if tracker.client_secret else 'NO CONFIGURADO'}")
+        tracker.add_log(f"👤 Usuario: {tracker.username}")
+        tracker.add_log(f"🔑 OAuth configurado: {bool(tracker.oauth_token)}")
+        tracker.add_log(f"🔑 OAuth valor: {'***' if tracker.oauth_token else 'NO CONFIGURADO'}")
         
         # Verificar variables de entorno
-        client_id_env = os.getenv('TWITCH_CLIENT_ID')
-        client_secret_env = os.getenv('TWITCH_CLIENT_SECRET')
-        tracker.add_log(f"📋 TWITCH_CLIENT_ID desde env: {'***' if client_id_env else 'NO CONFIGURADO'}")
-        tracker.add_log(f"📋 TWITCH_CLIENT_SECRET desde env: {'***' if client_secret_env else 'NO CONFIGURADO'}")
+        oauth_env = os.getenv('TWITCH_OAUTH')
+        tracker.add_log(f"📋 TWITCH_OAUTH desde env: {'***' if oauth_env else 'NO CONFIGURADO'}")
         
         # Intentar iniciar el tracker
-        tracker.add_log("🔄 Intentando iniciar tracker...")
+        tracker.add_log("🔄 Intentando iniciar tracker IRC...")
         tracker.start()
         
         if tracker.running:
-            tracker.add_log("✅ Tracker iniciado correctamente")
+            tracker.add_log("✅ Tracker IRC iniciado correctamente")
         else:
-            tracker.add_log("❌ Tracker no se pudo iniciar")
+            tracker.add_log("❌ Tracker IRC no se pudo iniciar")
             
     except Exception as e:
-        print(f"ERROR inicializando tracker: {e}")
+        print(f"ERROR inicializando tracker IRC: {e}")
         tracker.add_log(f"❌ Error crítico al inicializar: {e}")
         import traceback
         tracker.add_log(f"❌ Traceback: {traceback.format_exc()}")
