@@ -71,32 +71,59 @@ class TwitchTracker:
             print(clean_entry)
     
     def connect_to_chat(self):
-        """Conecta al chat de Twitch usando IRC"""
+        """Conecta al chat de Twitch usando IRC con configuración robusta"""
         try:
             if not self.oauth_token:
                 self.add_log('ERROR: TWITCH_OAUTH no configurado')
                 return False
             
+            # Cerrar conexión anterior si existe
+            if self.socket:
+                try:
+                    self.socket.close()
+                except:
+                    pass
+                self.socket = None
+            
             # Conectar a IRC de Twitch
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.settimeout(10)  # Timeout de conexión
             self.socket.connect(('irc.chat.twitch.tv', 6667))
+            
+            # Configurar socket para keepalive
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             
             # Autenticación
             self.send_command(f'PASS oauth:{self.oauth_token}')
             self.send_command(f'NICK {self.username}')
             self.send_command(f'JOIN #{self.channel_name}')
             
-            self.add_log('Conectado al chat de Twitch exitosamente')
+            # Esperar confirmación de conexión
+            time.sleep(1)
+            
+            self.add_log('✅ Conectado al chat de Twitch exitosamente')
             return True
             
         except Exception as e:
-            self.add_log(f'ERROR conectando al chat: {e}')
+            self.add_log(f'❌ ERROR conectando al chat: {e}')
+            if self.socket:
+                try:
+                    self.socket.close()
+                except:
+                    pass
+                self.socket = None
             return False
     
     def send_command(self, command):
-        """Envía un comando al IRC"""
-        if self.socket:
-            self.socket.send(f'{command}\r\n'.encode('utf-8'))
+        """Envía un comando al IRC de forma segura"""
+        try:
+            if self.socket:
+                self.socket.send(f'{command}\r\n'.encode('utf-8'))
+                return True
+        except Exception as e:
+            self.add_log(f'❌ Error enviando comando: {e}')
+            self.socket = None  # Marcar para reconexión
+        return False
     
     def parse_message(self, message):
         """Parsea mensajes IRC de Twitch"""
@@ -181,25 +208,42 @@ class TwitchTracker:
         self.add_log('🎯 Twitch IRC Tracker iniciado correctamente')
     
     def irc_loop(self):
-        """Loop principal para recibir mensajes IRC"""
+        """Loop principal para recibir mensajes IRC con reconexión automática"""
         self.add_log('🔄 Iniciando loop IRC...')
         
-        while self.running and self.socket:
+        while self.running:
             try:
-                # Recibir datos del socket
+                # Verificar conexión
+                if not self.socket:
+                    self.add_log('🔄 Reconectando al IRC...')
+                    if not self.connect_to_chat():
+                        self.add_log('❌ No se pudo reconectar, reintentando en 10s...')
+                        time.sleep(10)
+                        continue
+                
+                # Recibir datos del socket con timeout
+                self.socket.settimeout(30)  # Timeout de 30 segundos
                 data = self.socket.recv(1024).decode('utf-8')
                 
                 if not data:
-                    self.add_log('❌ Conexión IRC perdida')
-                    break
+                    self.add_log('❌ Conexión IRC perdida - reconectando...')
+                    self.socket = None
+                    continue
                 
                 # Procesar cada línea
                 for line in data.split('\r\n'):
                     if line.strip():
                         self.process_irc_message(line.strip())
                         
+            except socket.timeout:
+                # Timeout - enviar PING para mantener conexión
+                self.add_log('⏰ Timeout - enviando PING para mantener conexión')
+                self.send_command('PING :tmi.twitch.tv')
+                continue
+                
             except Exception as e:
-                self.add_log(f'❌ Error en irc_loop: {e}')
+                self.add_log(f'❌ Error en irc_loop: {e} - reconectando...')
+                self.socket = None
                 time.sleep(5)
     
     def process_irc_message(self, message):
@@ -295,16 +339,24 @@ class TwitchTracker:
     
     
     def monitor_loop(self):
-        """Loop principal de monitoreo - solo estadísticas"""
+        """Loop principal de monitoreo con keepalive agresivo"""
         self.add_log('🔄 Iniciando loop de monitoreo...')
+        
+        last_ping = time.time()
         
         while self.running:
             try:
-                # Solo mostrar estadísticas cada 30 segundos
-                time.sleep(30)
+                current_time = time.time()
                 
-                if self.running:
-                    # Estadísticas
+                # Enviar PING cada 60 segundos para mantener conexión
+                if current_time - last_ping > 60:
+                    if self.socket:
+                        self.add_log('💓 Enviando PING para mantener conexión IRC')
+                        self.send_command('PING :tmi.twitch.tv')
+                        last_ping = current_time
+                
+                # Estadísticas cada 30 segundos
+                if int(current_time) % 30 == 0:
                     self.add_log(f'📊 Estado IRC: {len(self.connected_users)} usuarios conectados')
                     self.add_log(f'📈 Total detectados: {len(current_viewers)} usuarios')
                     self.add_log(f'📋 Historial total: {len(all_history)} entradas')
@@ -313,6 +365,8 @@ class TwitchTracker:
                     if len(current_viewers) > 0:
                         recent_users = list(current_viewers.keys())[-3:]
                         self.add_log(f'👥 Usuarios recientes: {", ".join(recent_users)}')
+                
+                time.sleep(5)  # Verificar cada 5 segundos
                 
             except Exception as e:
                 self.add_log(f'❌ Error en monitor_loop: {e}')

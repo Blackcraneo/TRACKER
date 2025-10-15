@@ -56,6 +56,23 @@ Para verificar que funciona:
 2. Ve a `/api/status` - debe mostrar `irc_connected: true`
 3. Ve a `/api/debug` - debe mostrar usuarios en `connected_users_list`
 
+## 🚀 Mejoras Implementadas
+
+### ✅ **Reconexión Automática:**
+- Se reconecta automáticamente si pierde la conexión IRC
+- Timeout de 30 segundos para detectar conexiones perdidas
+- Reintenta conexión cada 10 segundos si falla
+
+### ✅ **Keepalive Agresivo:**
+- Envía PING cada 60 segundos para mantener conexión
+- Socket configurado con SO_KEEPALIVE
+- Timeout de conexión de 10 segundos
+
+### ✅ **Manejo de Errores Robusto:**
+- Maneja timeouts y errores de socket
+- Cierra conexiones limpiamente
+- Logs detallados de reconexión
+
 ## 🎯 Próximos Pasos
 
 1. **Configura TWITCH_OAUTH** en Railway
