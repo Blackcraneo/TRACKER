@@ -827,13 +827,19 @@ def dashboard():
                 
                 <div class="panel">
                     <div class="panel-header">📊 Historial Completo</div>
-                    <div class="filters" style="padding: 10px; border-bottom: 1px solid #333;">
-                        <input type="text" id="usernameFilter" placeholder="Buscar usuario (ej: MariaJo para MariaJosefina)..." style="margin-right: 10px; padding: 8px; border-radius: 6px; border: 2px solid #4CAF50; background: #1a1a1a; color: #fff; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif;">
-                        <button onclick="applyFilters()" style="margin-right: 5px; padding: 8px 15px; border-radius: 6px; border: 2px solid #2196F3; background: #2196F3; color: #fff; cursor: pointer; font-weight: bold; font-family: 'Segoe UI', Arial, sans-serif;">🔍 Buscar</button>
-                        <button onclick="clearFilters()" style="padding: 8px 15px; border-radius: 6px; border: 2px solid #f44336; background: #f44336; color: #fff; cursor: pointer; font-weight: bold; font-family: 'Segoe UI', Arial, sans-serif;">🗑️ Limpiar</button>
-                    </div>
                     <div class="panel-content scrollbar-custom" id="historial-list">
                         <div class="empty-message">Aún no hay historial</div>
+                    </div>
+                </div>
+                
+                <!-- Filtro como panel separado más pequeño -->
+                <div class="panel" style="max-height: 80px; margin: 10px 0;">
+                    <div class="filters" style="padding: 8px; background: rgba(255, 255, 255, 0.02); border: 1px solid #444; border-radius: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px; justify-content: center;">
+                            <input type="text" id="usernameFilter" placeholder="Buscar usuario..." style="padding: 6px 10px; border-radius: 4px; border: 1px solid #666; background: #2a2a2a; color: #fff; font-size: 12px; font-family: 'Segoe UI', Arial, sans-serif; flex: 1; max-width: 250px;">
+                            <button onclick="applyFilters()" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #2196F3; background: #2196F3; color: #fff; cursor: pointer; font-size: 12px; font-family: 'Segoe UI', Arial, sans-serif;">🔍</button>
+                            <button onclick="clearFilters()" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #666; background: #444; color: #fff; cursor: pointer; font-size: 12px; font-family: 'Segoe UI', Arial, sans-serif;">🗑️</button>
+                        </div>
                     </div>
                 </div>
             </div>
