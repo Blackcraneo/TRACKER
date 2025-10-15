@@ -3,10 +3,11 @@ import json
 import threading
 import time
 import requests
+import sqlite3
 from datetime import datetime
 from typing import Dict, List, Set
 import pytz
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -39,6 +40,166 @@ EXCLUDED_BOTS = [
     # Agrega aquí los nombres de tus bots personalizados
 ]
 
+# Clase para manejar la base de datos
+class DatabaseManager:
+    def __init__(self, db_path='tracker_history.db'):
+        self.db_path = db_path
+        self.init_database()
+    
+    def init_database(self):
+        """Inicializa la base de datos y crea las tablas necesarias"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Tabla para historial de usuarios
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS user_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        join_time TEXT,
+                        leave_time TEXT,
+                        duration TEXT,
+                        date_created TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL
+                    )
+                ''')
+                
+                # Tabla para usuarios actuales
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS current_users (
+                        username TEXT PRIMARY KEY,
+                        join_time TEXT NOT NULL,
+                        last_seen INTEGER NOT NULL
+                    )
+                ''')
+                
+                conn.commit()
+                print("✅ Base de datos inicializada correctamente")
+                
+        except Exception as e:
+            print(f"❌ Error inicializando base de datos: {e}")
+    
+    def add_user_entry(self, username, action, join_time=None, leave_time=None, duration=None):
+        """Agrega una entrada al historial"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                timestamp = int(time.time())
+                date_created = datetime.now(SANTIAGO_TZ).strftime('%d-%m-%y %H:%M:%S')
+                
+                cursor.execute('''
+                    INSERT INTO user_history (username, action, join_time, leave_time, duration, date_created, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (username, action, join_time, leave_time, duration, date_created, timestamp))
+                
+                conn.commit()
+                return True
+                
+        except Exception as e:
+            print(f"❌ Error agregando entrada: {e}")
+            return False
+    
+    def get_user_history(self, username=None, date_filter=None, limit=100):
+        """Obtiene el historial con filtros opcionales"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                query = "SELECT * FROM user_history WHERE 1=1"
+                params = []
+                
+                if username:
+                    query += " AND username LIKE ?"
+                    params.append(f"%{username}%")
+                
+                if date_filter:
+                    query += " AND date_created LIKE ?"
+                    params.append(f"%{date_filter}%")
+                
+                query += " ORDER BY timestamp DESC LIMIT ?"
+                params.append(limit)
+                
+                cursor.execute(query, params)
+                results = cursor.fetchall()
+                
+                # Convertir a lista de diccionarios
+                history = []
+                for row in results:
+                    history.append({
+                        'id': row[0],
+                        'username': row[1],
+                        'action': row[2],
+                        'join_time': row[3],
+                        'leave_time': row[4],
+                        'duration': row[5],
+                        'date_created': row[6],
+                        'timestamp': row[7]
+                    })
+                
+                return history
+                
+        except Exception as e:
+            print(f"❌ Error obteniendo historial: {e}")
+            return []
+    
+    def update_current_user(self, username, join_time):
+        """Actualiza o agrega un usuario actual"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                timestamp = int(time.time())
+                
+                cursor.execute('''
+                    INSERT OR REPLACE INTO current_users (username, join_time, last_seen)
+                    VALUES (?, ?, ?)
+                ''', (username, join_time, timestamp))
+                
+                conn.commit()
+                return True
+                
+        except Exception as e:
+            print(f"❌ Error actualizando usuario actual: {e}")
+            return False
+    
+    def remove_current_user(self, username):
+        """Remueve un usuario de la lista actual"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute('DELETE FROM current_users WHERE username = ?', (username,))
+                conn.commit()
+                return True
+                
+        except Exception as e:
+            print(f"❌ Error removiendo usuario actual: {e}")
+            return False
+    
+    def get_current_users(self):
+        """Obtiene la lista de usuarios actuales"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute('SELECT username, join_time, last_seen FROM current_users ORDER BY last_seen DESC')
+                results = cursor.fetchall()
+                
+                users = []
+                for row in results:
+                    users.append({
+                        'username': row[0],
+                        'join_time': row[1],
+                        'last_seen': row[2]
+                    })
+                
+                return users
+                
+        except Exception as e:
+            print(f"❌ Error obteniendo usuarios actuales: {e}")
+            return []
+
 class TwitchTracker:
     def __init__(self):
         self.channel_name = 'blackcraneo'
@@ -46,6 +207,9 @@ class TwitchTracker:
         self.running = False
         self.logs = []
         self.max_logs = 50
+        
+        # Base de datos
+        self.db = DatabaseManager()
         
         # Estado de usuarios
         self.previous_users = set()  # Usuarios del ciclo anterior
@@ -211,6 +375,10 @@ class TwitchTracker:
                 'status': 'salió'
             }
             
+            # Agregar a base de datos
+            self.db.add_user_entry(username, 'salió del stream', user_data['join_time'], leave_time, duration)
+            self.db.remove_current_user(username)
+            
             left_viewers.append(leave_data)
             
             history_entry = {
@@ -284,6 +452,10 @@ class TwitchTracker:
                     
                     current_viewers[username] = user_data
                     self.user_join_times[username] = time.time()
+                    
+                    # Agregar a base de datos
+                    self.db.add_user_entry(username, 'entró al stream', join_time)
+                    self.db.update_current_user(username, join_time)
                     
                     history_entry = {
                         **user_data,
@@ -656,6 +828,12 @@ def dashboard():
                 
                 <div class="panel">
                     <div class="panel-header">📊 Historial Completo</div>
+                    <div class="filters" style="padding: 10px; border-bottom: 1px solid #333;">
+                        <input type="text" id="usernameFilter" placeholder="Buscar por usuario..." style="margin-right: 10px; padding: 5px; border-radius: 4px; border: 1px solid #555; background: #222; color: #fff;">
+                        <input type="text" id="dateFilter" placeholder="DD-MM-YY" style="margin-right: 10px; padding: 5px; border-radius: 4px; border: 1px solid #555; background: #222; color: #fff;">
+                        <button onclick="applyFilters()" style="margin-right: 5px; padding: 5px 10px; border-radius: 4px; border: 1px solid #555; background: #007acc; color: #fff; cursor: pointer;">🔍 Filtrar</button>
+                        <button onclick="clearFilters()" style="padding: 5px 10px; border-radius: 4px; border: 1px solid #555; background: #dc3545; color: #fff; cursor: pointer;">🗑️ Limpiar</button>
+                    </div>
                     <div class="panel-content scrollbar-custom" id="historial-list">
                         <div class="empty-message">Aún no hay historial</div>
                     </div>
@@ -831,6 +1009,61 @@ def dashboard():
                         });
                     });
             }
+
+            function loadHistoryWithFilters(username = '', date = '') {
+                const url = `/api/history?username=${encodeURIComponent(username)}&date=${encodeURIComponent(date)}&limit=100`;
+                
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        const historialList = document.getElementById('historial-list');
+                        if (data.history && data.history.length > 0) {
+                            historialList.innerHTML = data.history.map(entry => {
+                                const duration = entry.duration || '-';
+                                
+                                return `
+                                    <div class="user-item" style="display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #333;">
+                                        <span style="color: #4CAF50; font-weight: bold;">${entry.username}</span>
+                                        <span style="color: #2196F3;">${entry.action}</span>
+                                        <span style="color: #FF9800; font-size: 0.8em;">${entry.date_created}</span>
+                                        <span style="color: #9C27B0; font-size: 0.8em;">${duration}</span>
+                                    </div>
+                                `;
+                            }).join('');
+                        } else {
+                            historialList.innerHTML = '<div class="empty-message">No hay historial disponible</div>';
+                        }
+                    })
+                    .catch(error => console.error('Error cargando historial:', error));
+            }
+
+            function applyFilters() {
+                const username = document.getElementById('usernameFilter').value;
+                const date = document.getElementById('dateFilter').value;
+                loadHistoryWithFilters(username, date);
+            }
+
+            function clearFilters() {
+                document.getElementById('usernameFilter').value = '';
+                document.getElementById('dateFilter').value = '';
+                loadHistoryWithFilters();
+            }
+
+            function loadCurrentUsers() {
+                fetch('/api/current-users')
+                    .then(response => response.json())
+                    .then(data => {
+                        const viendoList = document.getElementById('viendo-list');
+                        if (data.current_users && data.current_users.length > 0) {
+                            viendoList.innerHTML = data.current_users.map(user => 
+                                `<div class="user-item">👤 ${user.username}</div>`
+                            ).join('');
+                        } else {
+                            viendoList.innerHTML = '<div class="empty-message">No hay usuarios actuales</div>';
+                        }
+                    })
+                    .catch(error => console.error('Error cargando usuarios actuales:', error));
+            }
             
              // Actualizar cada 5 segundos
              setInterval(updateTime, 1000);
@@ -839,6 +1072,10 @@ def dashboard():
              setInterval(updateSalieron, 5000); // Salieron cada 5 segundos
              setInterval(updateHistorial, 5000); // Historial cada 5 segundos
              setInterval(updateLogs, 5000); // Logs cada 5 segundos
+             
+             // Cargar datos iniciales
+             loadHistoryWithFilters();
+             loadCurrentUsers();
             
             // Cargar datos iniciales
             updateTime();
@@ -914,7 +1151,7 @@ def get_logs():
 
 @app.route('/api/status')
 def status_endpoint():
-    """Endpoint para verificar el estado del sistema IRC"""
+    """Endpoint para verificar el estado del sistema API"""
     try:
         return jsonify({
             'status': 'ok',
@@ -932,6 +1169,57 @@ def status_endpoint():
             'current_chat_users': len(tracker.current_users),
             'logs_count': len(tracker.logs),
             'recent_logs': tracker.logs[-10:] if tracker.logs else [],
+            'timestamp': get_santiago_time()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': get_santiago_time()
+        })
+
+@app.route('/api/history')
+def history_endpoint():
+    """Endpoint para obtener historial con filtros"""
+    try:
+        username_filter = request.args.get('username', '').strip()
+        date_filter = request.args.get('date', '').strip()
+        limit = int(request.args.get('limit', 100))
+        
+        # Obtener historial de la base de datos
+        history = tracker.db.get_user_history(
+            username=username_filter if username_filter else None,
+            date_filter=date_filter if date_filter else None,
+            limit=limit
+        )
+        
+        return jsonify({
+            'status': 'ok',
+            'history': history,
+            'total_entries': len(history),
+            'filters': {
+                'username': username_filter,
+                'date': date_filter,
+                'limit': limit
+            },
+            'timestamp': get_santiago_time()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': get_santiago_time()
+        })
+
+@app.route('/api/current-users')
+def current_users_endpoint():
+    """Endpoint para obtener usuarios actuales desde la base de datos"""
+    try:
+        users = tracker.db.get_current_users()
+        return jsonify({
+            'status': 'ok',
+            'current_users': users,
+            'total_users': len(users),
             'timestamp': get_santiago_time()
         })
     except Exception as e:
