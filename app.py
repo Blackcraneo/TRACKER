@@ -217,12 +217,12 @@ class TwitchTracker:
                 if not self.socket:
                     self.add_log('🔄 Reconectando al IRC...')
                     if not self.connect_to_chat():
-                        self.add_log('❌ No se pudo reconectar, reintentando en 10s...')
-                        time.sleep(10)
+                        self.add_log('❌ No se pudo reconectar, reintentando en 30s...')
+                        time.sleep(30)
                         continue
                 
-                # Recibir datos del socket con timeout
-                self.socket.settimeout(30)  # Timeout de 30 segundos
+                # Recibir datos del socket con timeout más conservador
+                self.socket.settimeout(120)  # Timeout de 2 minutos
                 data = self.socket.recv(1024).decode('utf-8')
                 
                 if not data:
@@ -348,8 +348,8 @@ class TwitchTracker:
             try:
                 current_time = time.time()
                 
-                # Enviar PING cada 60 segundos para mantener conexión
-                if current_time - last_ping > 60:
+                # Enviar PING cada 300 segundos (5 minutos) para mantener conexión
+                if current_time - last_ping > 300:
                     if self.socket:
                         self.add_log('💓 Enviando PING para mantener conexión IRC')
                         self.send_command('PING :tmi.twitch.tv')
