@@ -388,7 +388,7 @@ class TwitchTracker:
             all_history.append(history_entry)
             
             del current_viewers[username]
-                        
+            
             self.add_log(f'🚪 {username} salió del stream (Estuvo: {duration}) - Poll #{self.total_polls}')
         
     def start(self):
@@ -915,7 +915,7 @@ def dashboard():
                         list.innerHTML = '';
                         
                         if (data.users.length === 0) {
-                            list.innerHTML = '<div class="empty-message" style="font-size: 12px; padding: 8px; text-align: center; color: #888; font-style: italic;">En espera de usuarios</div>';
+                            list.innerHTML = '<div class="empty-message" style="font-size: 12px; padding: 8px; text-align: center; color: #fff; font-style: italic;">En espera de usuarios</div>';
                             return;
                         }
                         
@@ -930,7 +930,7 @@ def dashboard():
                             item.style.boxShadow = '0 2px 8px rgba(244, 67, 54, 0.3)';
                             item.innerHTML = `
                                 <div style="display: flex; align-items: center; justify-content: space-between;">
-                                    <span style="color: #f44336; font-weight: bold; font-size: 16px; font-family: 'Segoe UI', Arial, sans-serif;">🚪 ${user.username}</span>
+                                    <span style="color: #f44336; font-weight: bold; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif;">🚪 ${user.username}</span>
                                     <span style="color: #FFB74D; font-size: 12px; background: rgba(255, 183, 77, 0.2); padding: 4px 8px; border-radius: 12px;">Salió</span>
                                 </div>
                                 <div style="color: #FFCDD2; font-size: 12px; margin-top: 4px;">Tiempo: ${user.duration || 'N/A'}</div>
@@ -1072,7 +1072,7 @@ def dashboard():
                             viendoList.innerHTML = data.current_users.map(user => 
                                 `<div class="user-item" style="padding: 12px; margin: 8px 0; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-radius: 8px; border-left: 4px solid #4CAF50; box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);">
                                     <div style="display: flex; align-items: center; justify-content: space-between;">
-                                        <span style="color: #4CAF50; font-weight: bold; font-size: 16px; font-family: 'Segoe UI', Arial, sans-serif;">👤 ${user.username}</span>
+                                        <span style="color: #4CAF50; font-weight: bold; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif;">👤 ${user.username}</span>
                                         <span style="color: #81C784; font-size: 12px; background: rgba(76, 175, 80, 0.2); padding: 4px 8px; border-radius: 12px;">En línea</span>
                                     </div>
                                     <div style="color: #B0BEC5; font-size: 12px; margin-top: 4px;">Entró: ${user.join_time}</div>
