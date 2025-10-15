@@ -3,6 +3,7 @@ import json
 import socket
 import threading
 import time
+import requests
 from datetime import datetime
 from typing import Dict, List
 import pytz
@@ -50,6 +51,11 @@ class TwitchTracker:
         self.max_logs = 50
         self.connected_users = set()  # Usuarios conectados al chat
         self.user_join_times = {}  # Tiempo de entrada de cada usuario
+        self.connection_attempts = 0  # Contador de intentos de conexión
+        self.last_connection_time = 0  # Última conexión exitosa
+        self.connection_start_time = 0  # Tiempo de inicio de conexión actual
+        self.max_connection_duration = 480  # 8 minutos máximo por conexión
+        self.heartbeat_interval = 15  # PING cada 15 segundos
     
     def add_log(self, message):
         """Agrega un mensaje al log"""
@@ -71,11 +77,13 @@ class TwitchTracker:
             print(clean_entry)
     
     def connect_to_chat(self):
-        """Conecta al chat de Twitch usando IRC con configuración robusta"""
+        """Conecta al chat de Twitch usando IRC con configuración ULTRA persistente"""
         try:
             if not self.oauth_token:
                 self.add_log('ERROR: TWITCH_OAUTH no configurado')
                 return False
+            
+            self.connection_attempts += 1
             
             # Cerrar conexión anterior si existe
             if self.socket:
@@ -85,27 +93,43 @@ class TwitchTracker:
                     pass
                 self.socket = None
             
-            # Conectar a IRC de Twitch
+            # Crear socket con configuración ULTRA persistente
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.settimeout(10)  # Timeout de conexión
+            
+            # Configuración ULTRA agresiva para Railway
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 10)   # 10 segundos
+            self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 5)   # 5 segundos
+            self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 2)     # 2 intentos
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            
+            # Timeout de conexión
+            self.socket.settimeout(20)
+            
+            # Conectar
             self.socket.connect(('irc.chat.twitch.tv', 6667))
             
-            # Configurar socket para keepalive
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            
-            # Autenticación
+            # Autenticación RÁPIDA
             self.send_command(f'PASS oauth:{self.oauth_token}')
+            time.sleep(0.1)  # Delay mínimo
             self.send_command(f'NICK {self.username}')
+            time.sleep(0.1)  # Delay mínimo
             self.send_command(f'JOIN #{self.channel_name}')
             
-            # Esperar confirmación de conexión
-            time.sleep(1)
+            # Confirmación inmediata
+            time.sleep(0.5)
             
-            self.add_log('✅ Conectado al chat de Twitch exitosamente')
+            # PING inmediato
+            self.send_command('PING :tmi.twitch.tv')
+            
+            self.last_connection_time = time.time()
+            self.connection_start_time = time.time()
+            self.add_log(f'✅ Conectado al IRC (intento #{self.connection_attempts}) - Duración máxima: {self.max_connection_duration}s')
             return True
             
         except Exception as e:
-            self.add_log(f'❌ ERROR conectando al chat: {e}')
+            self.add_log(f'❌ ERROR conectando al chat: {e} (intento #{self.connection_attempts})')
             if self.socket:
                 try:
                     self.socket.close()
@@ -208,21 +232,38 @@ class TwitchTracker:
         self.add_log('🎯 Twitch IRC Tracker iniciado correctamente')
     
     def irc_loop(self):
-        """Loop principal para recibir mensajes IRC con reconexión automática"""
-        self.add_log('🔄 Iniciando loop IRC...')
+        """Loop IRC con reconexión preventiva + heartbeat agresivo"""
+        self.add_log('🔄 Iniciando IRC con reconexión preventiva...')
+        
+        last_ping = time.time()
+        last_activity = time.time()
         
         while self.running:
             try:
+                current_time = time.time()
+                
+                # Verificar si necesitamos reconexión preventiva
+                if self.socket and self.connection_start_time:
+                    connection_duration = current_time - self.connection_start_time
+                    if connection_duration >= self.max_connection_duration:
+                        self.add_log(f'🔄 Reconexión preventiva (conectado {int(connection_duration)}s)')
+                        self.socket = None  # Forzar reconexión
+                
                 # Verificar conexión
                 if not self.socket:
                     self.add_log('🔄 Reconectando al IRC...')
                     if not self.connect_to_chat():
-                        self.add_log('❌ No se pudo reconectar, reintentando en 30s...')
-                        time.sleep(30)
+                        self.add_log('❌ Fallo de conexión - reintentando en 2s...')
+                        time.sleep(2)  # Espera corta para evitar spam
                         continue
+                    else:
+                        last_activity = current_time
+                        last_ping = current_time
                 
-                # Recibir datos del socket con timeout más conservador
-                self.socket.settimeout(120)  # Timeout de 2 minutos
+                # Timeout para detectar problemas
+                self.socket.settimeout(10)
+                
+                # Recibir datos
                 data = self.socket.recv(1024).decode('utf-8')
                 
                 if not data:
@@ -230,21 +271,33 @@ class TwitchTracker:
                     self.socket = None
                     continue
                 
+                last_activity = current_time
+                
                 # Procesar cada línea
                 for line in data.split('\r\n'):
                     if line.strip():
                         self.process_irc_message(line.strip())
                         
+                # Heartbeat agresivo cada 15 segundos
+                if current_time - last_ping >= self.heartbeat_interval:
+                    self.add_log(f'💓 Heartbeat (cada {self.heartbeat_interval}s)')
+                    if not self.send_command('PING :tmi.twitch.tv'):
+                        self.socket = None
+                    last_ping = current_time
+                        
             except socket.timeout:
-                # Timeout - enviar PING para mantener conexión
-                self.add_log('⏰ Timeout - enviando PING para mantener conexión')
-                self.send_command('PING :tmi.twitch.tv')
+                # Timeout - verificar si necesitamos heartbeat
+                current_time = time.time()
+                if current_time - last_ping >= self.heartbeat_interval:
+                    self.add_log('⏰ Timeout - enviando heartbeat')
+                    if not self.send_command('PING :tmi.twitch.tv'):
+                        self.socket = None
                 continue
                 
             except Exception as e:
                 self.add_log(f'❌ Error en irc_loop: {e} - reconectando...')
                 self.socket = None
-                time.sleep(5)
+                time.sleep(2)
     
     def process_irc_message(self, message):
         """Procesa un mensaje IRC"""
@@ -338,39 +391,45 @@ class TwitchTracker:
     
     
     
+    
+    
     def monitor_loop(self):
-        """Loop principal de monitoreo con keepalive agresivo"""
-        self.add_log('🔄 Iniciando loop de monitoreo...')
-        
-        last_ping = time.time()
+        """Loop de monitoreo con reconexión preventiva"""
+        self.add_log('🔄 Iniciando monitoreo con reconexión preventiva...')
         
         while self.running:
             try:
-                current_time = time.time()
+                # Estadísticas cada 60 segundos
+                time.sleep(60)
                 
-                # Enviar PING cada 300 segundos (5 minutos) para mantener conexión
-                if current_time - last_ping > 300:
-                    if self.socket:
-                        self.add_log('💓 Enviando PING para mantener conexión IRC')
-                        self.send_command('PING :tmi.twitch.tv')
-                        last_ping = current_time
-                
-                # Estadísticas cada 30 segundos
-                if int(current_time) % 30 == 0:
-                    self.add_log(f'📊 Estado IRC: {len(self.connected_users)} usuarios conectados')
-                    self.add_log(f'📈 Total detectados: {len(current_viewers)} usuarios')
-                    self.add_log(f'📋 Historial total: {len(all_history)} entradas')
+                if self.running:
+                    # Estado IRC
+                    irc_status = "✅ CONECTADO" if self.socket else "❌ DESCONECTADO"
+                    current_time = time.time()
                     
-                    # Mostrar usuarios conectados recientemente
+                    if self.connection_start_time:
+                        connection_duration = current_time - self.connection_start_time
+                        time_until_reconnect = max(0, self.max_connection_duration - connection_duration)
+                        self.add_log(f'📊 IRC: {irc_status} (conectado {int(connection_duration)}s)')
+                        self.add_log(f'⏰ Próxima reconexión en: {int(time_until_reconnect)}s')
+                    else:
+                        self.add_log(f'📊 IRC: {irc_status}')
+                    
+                    self.add_log(f'📈 Usuarios detectados: {len(current_viewers)}')
+                    self.add_log(f'📋 Historial total: {len(all_history)} entradas')
+                    self.add_log(f'🔄 Intentos de conexión: {self.connection_attempts}')
+                    self.add_log(f'💓 Heartbeat: cada {self.heartbeat_interval}s')
+                    
+                    # Mostrar usuarios recientes
                     if len(current_viewers) > 0:
                         recent_users = list(current_viewers.keys())[-3:]
                         self.add_log(f'👥 Usuarios recientes: {", ".join(recent_users)}')
-                
-                time.sleep(5)  # Verificar cada 5 segundos
+                    else:
+                        self.add_log('💤 Esperando usuarios en IRC...')
                 
             except Exception as e:
                 self.add_log(f'❌ Error en monitor_loop: {e}')
-                time.sleep(10)
+                time.sleep(30)
     
 
 def get_santiago_time() -> str:
@@ -943,6 +1002,11 @@ def status_endpoint():
             'connected_users_count': len(tracker.connected_users),
             'current_viewers_count': len(current_viewers),
             'total_history_count': len(all_history),
+            'connection_attempts': tracker.connection_attempts,
+            'connection_duration': int(time.time() - tracker.connection_start_time) if tracker.connection_start_time else 0,
+            'max_connection_duration': tracker.max_connection_duration,
+            'heartbeat_interval': tracker.heartbeat_interval,
+            'time_until_reconnect': max(0, tracker.max_connection_duration - (time.time() - tracker.connection_start_time)) if tracker.connection_start_time else 0,
             'logs_count': len(tracker.logs),
             'recent_logs': tracker.logs[-10:] if tracker.logs else [],
             'timestamp': get_santiago_time()
