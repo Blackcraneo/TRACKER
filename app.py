@@ -161,7 +161,7 @@ class DatabaseManager:
                 
         except Exception as e:
             print(f"❌ Error actualizando usuario actual: {e}")
-            return False
+        return False
     
     def remove_current_user(self, username):
         """Remueve un usuario de la lista actual"""
@@ -198,8 +198,8 @@ class DatabaseManager:
                 
         except Exception as e:
             print(f"❌ Error obteniendo usuarios actuales: {e}")
-            return []
-
+        return []
+    
 class TwitchTracker:
     def __init__(self):
         self.channel_name = 'blackcraneo'
@@ -218,7 +218,7 @@ class TwitchTracker:
         self.user_last_seen = {}     # Última vez que se vio a cada usuario
         
         # Configuración de polling
-        self.poll_interval = 15      # Polling cada 15 segundos (tiempo real)
+        self.poll_interval = 10      # Polling cada 10 segundos (más responsivo)
         self.client_id = 'gp762nuuoqcoxypju8c569th9wz7q5'  # Client ID público
         self.rate_limit_remaining = 800  # Límite de requests por minuto
         self.last_rate_limit_reset = time.time()
@@ -310,7 +310,7 @@ class TwitchTracker:
                         chatters.add(username)
                 
                 self.rate_limit_remaining -= 1
-                self.add_log(f'📊 API: {len(chatters)} chatters detectados')
+                self.add_log(f'📊 API: {len(chatters)} chatters detectados - Poll #{self.total_polls}')
                 return chatters
                 
             elif chatters_response.status_code == 403:
@@ -388,8 +388,8 @@ class TwitchTracker:
             all_history.append(history_entry)
             
             del current_viewers[username]
-            
-            self.add_log(f'🚪 {username} salió del stream (Estuvo: {duration})')
+                        
+            self.add_log(f'🚪 {username} salió del stream (Estuvo: {duration}) - Poll #{self.total_polls}')
         
     def start(self):
         """Inicia el tracker con API Polling"""
@@ -456,13 +456,14 @@ class TwitchTracker:
                     # Solo actualizar usuario actual (no agregar entrada de entrada al historial)
                     self.db.update_current_user(username, join_time)
                     
-                    history_entry = {
-                        **user_data,
-                        'action': 'entró al stream'
-                    }
-                    all_history.append(history_entry)
+                    # NO agregar entradas al historial - solo salidas
+                    # history_entry = {
+                    #     **user_data,
+                    #     'action': 'entró al stream'
+                    # }
+                    # all_history.append(history_entry)
                     
-                    self.add_log(f'👋 {username} entró al stream')
+                    self.add_log(f'👋 {username} entró al stream - Poll #{self.total_polls}')
             
             # Detectar usuarios que salieron
             left_users = self.previous_users - current_users
@@ -529,12 +530,12 @@ class TwitchTracker:
 def get_santiago_time() -> str:
     """Obtiene la hora actual en Santiago, Chile"""
     now = datetime.now(SANTIAGO_TZ)
-    return now.strftime('%Y-%m-%d %H:%M:%S')
+    return now.strftime('%d-%m-%y %H:%M:%S')
 
 def calculate_duration(start_time: str, end_time: str) -> str:
     """Calcula la duración entre dos timestamps"""
-    start = datetime.strptime(start_time, '%Y-%m-%d %H:%M:%S')
-    end = datetime.strptime(end_time, '%Y-%m-%d %H:%M:%S')
+    start = datetime.strptime(start_time, '%d-%m-%y %H:%M:%S')
+    end = datetime.strptime(end_time, '%d-%m-%y %H:%M:%S')
     
     duration = end - start
     hours = int(duration.total_seconds() // 3600)
@@ -914,7 +915,7 @@ def dashboard():
                         list.innerHTML = '';
                         
                         if (data.users.length === 0) {
-                            list.innerHTML = '<div class="empty-message">En espera de usuarios</div>';
+                            list.innerHTML = '<div class="empty-message" style="font-size: 12px; padding: 8px; text-align: center; color: #888; font-style: italic;">En espera de usuarios</div>';
                             return;
                         }
                         
@@ -1084,13 +1085,13 @@ def dashboard():
                     .catch(error => console.error('Error cargando usuarios actuales:', error));
             }
             
-             // Actualizar cada 5 segundos
+             // Actualizar cada 3 segundos (más responsivo)
              setInterval(updateTime, 1000);
-             setInterval(updateStats, 5000);  // Estadísticas cada 5 segundos
-             setInterval(updateViendo, 5000); // Viendo cada 5 segundos
-             setInterval(updateSalieron, 5000); // Salieron cada 5 segundos
-             setInterval(updateHistorial, 5000); // Historial cada 5 segundos
-             setInterval(updateLogs, 5000); // Logs cada 5 segundos
+             setInterval(updateStats, 3000);  // Estadísticas cada 3 segundos
+             setInterval(updateViendo, 3000); // Viendo cada 3 segundos
+             setInterval(updateSalieron, 3000); // Salieron cada 3 segundos
+             setInterval(updateHistorial, 3000); // Historial cada 3 segundos
+             setInterval(updateLogs, 3000); // Logs cada 3 segundos
              
              // Cargar datos iniciales
              loadHistoryWithFilters();
@@ -1278,8 +1279,8 @@ def debug_endpoint():
     except Exception as e:
         return jsonify({
             'error': str(e),
-            'timestamp': get_santiago_time()
-        })
+        'timestamp': get_santiago_time()
+    })
 
 # Crear instancia del tracker
 tracker = TwitchTracker()
