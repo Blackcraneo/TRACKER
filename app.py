@@ -669,9 +669,17 @@ def dashboard():
             }
             
             .panel-content {
+                padding: 4px;
+            }
+            
+            .panel-content.scrollable {
+                max-height: 300px;
+                overflow-y: auto;
+            }
+            
+            .panel-content.fixed-height {
                 max-height: 80px;
                 overflow-y: auto;
-                padding: 4px;
             }
             
             .user-item {
@@ -684,6 +692,19 @@ def dashboard():
                 border-radius: 4px;
                 border-left: 2px solid #ff4444;
                 transition: all 0.2s ease;
+            }
+            
+            .user-item-compact {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 2px 6px;
+                margin: 1px 0;
+                background: rgba(139, 0, 0, 0.1);
+                border-radius: 4px;
+                border-left: 2px solid #ff4444;
+                transition: all 0.2s ease;
+                font-size: 0.75em;
             }
             
             .user-item:hover {
@@ -705,6 +726,41 @@ def dashboard():
                 color: #ff8888;
                 font-weight: 600;
                 font-size: 0.6em;
+            }
+            
+            .autocomplete-items {
+                position: absolute;
+                border: 1px solid #666;
+                border-top: none;
+                z-index: 99;
+                top: 100%;
+                left: 0;
+                right: 0;
+                max-height: 150px;
+                overflow-y: auto;
+                background-color: #2a2a2a;
+                border-radius: 0 0 4px 4px;
+            }
+            
+            .autocomplete-items div {
+                padding: 8px;
+                cursor: pointer;
+                background-color: #2a2a2a;
+                border-bottom: 1px solid #444;
+                color: #fff;
+                font-size: 12px;
+            }
+            
+            .autocomplete-items div:hover {
+                background-color: #3a3a3a;
+            }
+            
+            .autocomplete-active {
+                background-color: #3a3a3a !important;
+            }
+            
+            .filter-container {
+                position: relative;
             }
             
             .status-viendo {
@@ -814,21 +870,21 @@ def dashboard():
             <div class="panels-grid">
                 <div class="panel">
                     <div class="panel-header">👥 Viendo Ahora</div>
-                    <div class="panel-content scrollbar-custom" id="viendo-list">
+                    <div class="panel-content scrollable scrollbar-custom" id="viendo-list">
                         <div class="empty-message">En espera de usuarios</div>
                     </div>
                 </div>
                 
                 <div class="panel">
                     <div class="panel-header">🚪 Salieron Recientemente</div>
-                    <div class="panel-content scrollbar-custom" id="salieron-list">
+                    <div class="panel-content scrollable scrollbar-custom" id="salieron-list">
                         <div class="empty-message">En espera de usuarios</div>
                     </div>
                 </div>
                 
                 <div class="panel">
                     <div class="panel-header">📊 Historial Completo</div>
-                    <div class="panel-content scrollbar-custom" id="historial-list">
+                    <div class="panel-content fixed-height scrollbar-custom" id="historial-list">
                         <div class="empty-message">Aún no hay historial</div>
                     </div>
                 </div>
@@ -836,8 +892,11 @@ def dashboard():
                 <!-- Filtro como panel separado más pequeño -->
                 <div class="panel" style="max-height: 80px; margin: 10px 0;">
                     <div class="filters" style="padding: 8px; background: rgba(255, 255, 255, 0.02); border: 1px solid #444; border-radius: 6px;">
-                        <div style="display: flex; align-items: center; gap: 8px; justify-content: center;">
-                            <input type="text" id="usernameFilter" placeholder="Buscar usuario..." style="padding: 6px 10px; border-radius: 4px; border: 1px solid #666; background: #2a2a2a; color: #fff; font-size: 12px; font-family: 'Segoe UI', Arial, sans-serif; flex: 1; max-width: 250px;">
+                        <div class="filter-container" style="display: flex; align-items: center; gap: 8px; justify-content: center;">
+                            <div style="position: relative; flex: 1; max-width: 250px;">
+                                <input type="text" id="usernameFilter" placeholder="Buscar usuario..." autocomplete="off" style="padding: 6px 10px; border-radius: 4px; border: 1px solid #666; background: #2a2a2a; color: #fff; font-size: 12px; font-family: 'Segoe UI', Arial, sans-serif; width: 100%;">
+                                <div id="autocomplete-list" class="autocomplete-items scrollbar-custom"></div>
+                            </div>
                             <button onclick="applyFilters()" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #2196F3; background: #2196F3; color: #fff; cursor: pointer; font-size: 12px; font-family: 'Segoe UI', Arial, sans-serif;">🔍</button>
                             <button onclick="clearFilters()" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #666; background: #444; color: #fff; cursor: pointer; font-size: 12px; font-family: 'Segoe UI', Arial, sans-serif;">🗑️</button>
                         </div>
@@ -847,7 +906,7 @@ def dashboard():
             
             <div class="panel">
                 <div class="panel-header">📋 Logs del Sistema</div>
-                <div class="panel-content scrollbar-custom" id="logs-list">
+                <div class="panel-content fixed-height scrollbar-custom" id="logs-list">
                     <div class="empty-message">Cargando logs...</div>
                 </div>
             </div>
@@ -892,9 +951,9 @@ def dashboard():
                             return;
                         }
                         
-                        data.users.forEach(user => {
+                        data.users.slice(0, 10).forEach(user => {
                             const item = document.createElement('div');
-                            item.className = 'user-item status-viendo';
+                            item.className = 'user-item-compact status-viendo';
                             item.innerHTML = `
                                 <div>
                                     <div class="user-name">${user.username}</div>
@@ -915,26 +974,20 @@ def dashboard():
                         list.innerHTML = '';
                         
                         if (data.users.length === 0) {
-                            list.innerHTML = '<div class="empty-message" style="font-size: 12px; padding: 8px; text-align: center; color: #fff; font-style: italic;">En espera de usuarios</div>';
+                            list.innerHTML = '<div class="empty-message">En espera de usuarios</div>';
                             return;
                         }
                         
                         data.users.slice(-10).reverse().forEach(user => {
                             const item = document.createElement('div');
-                            item.className = 'user-item';
-                            item.style.padding = '12px';
-                            item.style.margin = '8px 0';
-                            item.style.background = 'linear-gradient(135deg, #4a1a1a 0%, #6d1b1b 100%)';
-                            item.style.borderRadius = '8px';
-                            item.style.borderLeft = '4px solid #f44336';
-                            item.style.boxShadow = '0 2px 8px rgba(244, 67, 54, 0.3)';
+                            item.className = 'user-item-compact status-salió';
                             item.innerHTML = `
-                                <div style="display: flex; align-items: center; justify-content: space-between;">
-                                    <span style="color: #f44336; font-weight: bold; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif;">🚪 ${user.username}</span>
-                                    <span style="color: #FFB74D; font-size: 12px; background: rgba(255, 183, 77, 0.2); padding: 4px 8px; border-radius: 12px;">Salió</span>
+                                <div>
+                                    <div class="user-name">${user.username}</div>
+                                    <div class="user-time">Salió: ${user.leave_time}</div>
+                                    ${user.duration ? `<div class="user-duration">Estuvo: ${user.duration}</div>` : ''}
                                 </div>
-                                <div style="color: #FFCDD2; font-size: 12px; margin-top: 4px;">Tiempo: ${user.duration || 'N/A'}</div>
-                                <div style="color: #B0BEC5; font-size: 11px;">Salió: ${user.leave_time}</div>
+                                <div>🔴</div>
                             `;
                             list.appendChild(item);
                         });
@@ -1033,15 +1086,13 @@ def dashboard():
                                 const duration = entry.duration || '-';
                                 
                                 return `
-                                    <div class="user-item" style="padding: 15px; margin: 10px 0; background: linear-gradient(135deg, #2c1810 0%, #3e2723 100%); border-radius: 10px; border-left: 5px solid #f44336; box-shadow: 0 3px 10px rgba(244, 67, 54, 0.3);">
-                                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                                            <span style="color: #f44336; font-weight: bold; font-size: 18px; font-family: 'Segoe UI', Arial, sans-serif;">👤 ${entry.username}</span>
-                                            <span style="color: #FFB74D; font-size: 14px; background: rgba(255, 183, 77, 0.2); padding: 4px 10px; border-radius: 15px;">${entry.action}</span>
+                                    <div class="user-item-compact status-salió">
+                                        <div>
+                                            <div class="user-name">${entry.username}</div>
+                                            <div class="user-time">Salió: ${entry.leave_time || entry.date_created}</div>
+                                            ${duration !== '-' ? `<div class="user-duration">Estuvo: ${duration}</div>` : ''}
                                         </div>
-                                        <div style="display: flex; justify-content: space-between; color: #B0BEC5; font-size: 13px;">
-                                            <span>📅 ${entry.date_created}</span>
-                                            <span style="color: #4CAF50; font-weight: bold;">⏱️ ${duration}</span>
-                                        </div>
+                                        <div>🔴</div>
                                     </div>
                                 `;
                             }).join('');
@@ -1060,8 +1111,107 @@ def dashboard():
 
             function clearFilters() {
                 document.getElementById('usernameFilter').value = '';
+                closeAllLists();
                 loadHistoryWithFilters();
             }
+            
+            // Sistema de autocompletado
+            let allUsernames = [];
+            
+            function updateAutocomplete() {
+                fetch('/api/all-usernames')
+                    .then(response => response.json())
+                    .then(data => {
+                        allUsernames = data.usernames || [];
+                    })
+                    .catch(error => console.error('Error cargando usernames:', error));
+            }
+            
+            function closeAllLists() {
+                const items = document.getElementById('autocomplete-list');
+                items.innerHTML = '';
+            }
+            
+            document.addEventListener('DOMContentLoaded', function() {
+                const input = document.getElementById('usernameFilter');
+                let currentFocus = -1;
+                
+                input.addEventListener('input', function() {
+                    const val = this.value;
+                    closeAllLists();
+                    
+                    if (!val) return false;
+                    
+                    currentFocus = -1;
+                    const autocompleteList = document.getElementById('autocomplete-list');
+                    
+                    const matches = allUsernames.filter(username => 
+                        username.toLowerCase().includes(val.toLowerCase())
+                    ).slice(0, 10);
+                    
+                    if (matches.length === 0) return false;
+                    
+                    matches.forEach(username => {
+                        const div = document.createElement('div');
+                        const index = username.toLowerCase().indexOf(val.toLowerCase());
+                        
+                        div.innerHTML = username.substr(0, index) + 
+                                       '<strong>' + username.substr(index, val.length) + '</strong>' + 
+                                       username.substr(index + val.length);
+                        
+                        div.addEventListener('click', function() {
+                            input.value = username;
+                            closeAllLists();
+                            applyFilters();
+                        });
+                        
+                        autocompleteList.appendChild(div);
+                    });
+                });
+                
+                input.addEventListener('keydown', function(e) {
+                    const items = document.getElementById('autocomplete-list').getElementsByTagName('div');
+                    
+                    if (e.keyCode === 40) { // Flecha abajo
+                        currentFocus++;
+                        addActive(items);
+                    } else if (e.keyCode === 38) { // Flecha arriba
+                        currentFocus--;
+                        addActive(items);
+                    } else if (e.keyCode === 13) { // Enter
+                        e.preventDefault();
+                        if (currentFocus > -1 && items[currentFocus]) {
+                            items[currentFocus].click();
+                        } else {
+                            applyFilters();
+                        }
+                    }
+                });
+                
+                function addActive(items) {
+                    if (!items) return false;
+                    removeActive(items);
+                    if (currentFocus >= items.length) currentFocus = 0;
+                    if (currentFocus < 0) currentFocus = items.length - 1;
+                    items[currentFocus].classList.add('autocomplete-active');
+                }
+                
+                function removeActive(items) {
+                    for (let i = 0; i < items.length; i++) {
+                        items[i].classList.remove('autocomplete-active');
+                    }
+                }
+                
+                document.addEventListener('click', function(e) {
+                    if (e.target !== input) {
+                        closeAllLists();
+                    }
+                });
+            });
+            
+            // Actualizar lista de usernames cada 10 segundos
+            setInterval(updateAutocomplete, 10000);
+            updateAutocomplete();
 
             function loadCurrentUsers() {
                 fetch('/api/current-users')
@@ -1069,13 +1219,13 @@ def dashboard():
                     .then(data => {
                         const viendoList = document.getElementById('viendo-list');
                         if (data.current_users && data.current_users.length > 0) {
-                            viendoList.innerHTML = data.current_users.map(user => 
-                                `<div class="user-item" style="padding: 12px; margin: 8px 0; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-radius: 8px; border-left: 4px solid #4CAF50; box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);">
-                                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                                        <span style="color: #4CAF50; font-weight: bold; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif;">👤 ${user.username}</span>
-                                        <span style="color: #81C784; font-size: 12px; background: rgba(76, 175, 80, 0.2); padding: 4px 8px; border-radius: 12px;">En línea</span>
+                            viendoList.innerHTML = data.current_users.slice(0, 10).map(user => 
+                                `<div class="user-item-compact status-viendo">
+                                    <div>
+                                        <div class="user-name">${user.username}</div>
+                                        <div class="user-time">Entró: ${user.join_time}</div>
                                     </div>
-                                    <div style="color: #B0BEC5; font-size: 12px; margin-top: 4px;">Entró: ${user.join_time}</div>
+                                    <div class="pulse">🟢</div>
                                 </div>`
                             ).join('');
                         } else {
@@ -1240,6 +1390,30 @@ def current_users_endpoint():
             'status': 'ok',
             'current_users': users,
             'total_users': len(users),
+            'timestamp': get_santiago_time()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': get_santiago_time()
+        })
+
+@app.route('/api/all-usernames')
+def all_usernames_endpoint():
+    """Endpoint para obtener todos los usernames únicos para autocompletado"""
+    try:
+        # Obtener usernames únicos de la base de datos
+        with sqlite3.connect(tracker.db.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT DISTINCT username FROM user_history ORDER BY username')
+            results = cursor.fetchall()
+            usernames = [row[0] for row in results]
+        
+        return jsonify({
+            'status': 'ok',
+            'usernames': usernames,
+            'total': len(usernames),
             'timestamp': get_santiago_time()
         })
     except Exception as e:
